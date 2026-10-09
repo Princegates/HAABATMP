@@ -5,6 +5,7 @@
  */
 import { Client } from 'pg';
 import { loadEnv } from '../config';
+import { serviceHeaders } from '../common/supabase';
 
 async function main() {
   const [email, ...nameParts] = process.argv.slice(2);
@@ -22,7 +23,7 @@ async function main() {
     let authUserId: string | null = null;
     if (env.AUTH_MODE === 'supabase') {
       const res = await fetch(`${env.SUPABASE_URL}/auth/v1/invite?redirect_to=${encodeURIComponent(`${env.PUBLIC_WEB_URL}/set-password`)}`, {
-        method: 'POST', headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ email }),
+        method: 'POST', headers: { ...serviceHeaders(env.SUPABASE_SERVICE_ROLE_KEY), 'Content-Type': 'application/json' }, body: JSON.stringify({ email }),
       });
       if (!res.ok) throw new Error(`The invitation could not be sent (${res.status}). Check the Supabase keys.`);
       authUserId = ((await res.json()) as any).id ?? null;

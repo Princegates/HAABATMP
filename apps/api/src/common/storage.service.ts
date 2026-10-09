@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { ENV, Env } from '../config';
 import { IntegrationsService } from './integrations.service';
+import { serviceHeaders } from './supabase';
 
 export interface StoredFile { body: Buffer }
 
@@ -48,7 +49,7 @@ export class StorageService {
     return `${this.env.SUPABASE_URL}/storage/v1/object/${this.env.SUPABASE_STORAGE_BUCKET}/${encoded}`;
   }
   private authHeaders() {
-    return { Authorization: `Bearer ${this.env.SUPABASE_SERVICE_ROLE_KEY}`, apikey: this.env.SUPABASE_SERVICE_ROLE_KEY! };
+    return serviceHeaders(this.env.SUPABASE_SERVICE_ROLE_KEY);
   }
   private localPath(key: string) {
     const root = path.resolve(this.env.STORAGE_DIR);

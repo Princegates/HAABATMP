@@ -14,7 +14,7 @@ Work through this in order. Each step says how to check it worked.
 5. **Storage**: create a bucket named `atmp-documents` and make it **private**.
 6. **Database > Backups**: turn on point-in-time recovery on a paid plan. The SRS targets are a 24 hour RPO and 4 hour RTO.
    Point-in-time recovery gets you to minutes, which is better.
-7. Collect: project URL, `anon` key, `service_role` key, the pooled database URL (transaction mode) and the direct database URL.
+7. Collect: project URL, the publishable key (or legacy `anon`), the secret key (or legacy `service_role`; both styles work), the pooled database URL (transaction mode) and the direct database URL.
    If the project uses the newer asymmetric signing keys, nothing more is needed. If it still uses the legacy shared secret,
    also set `SUPABASE_JWT_SECRET`.
 

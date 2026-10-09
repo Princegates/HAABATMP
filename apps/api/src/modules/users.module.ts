@@ -9,6 +9,7 @@ import { AuditService } from '../common/audit.service';
 import { CryptoService } from '../common/crypto.service';
 import { Db, Q } from '../common/db.service';
 import { ActorCtx, CurrentUser, Public, Require } from '../common/decorators';
+import { serviceHeaders } from '../common/supabase';
 import { NotifyService } from '../common/notify.service';
 import { SettingsService } from '../common/settings.service';
 import { Throttle } from '@nestjs/throttler';
@@ -380,7 +381,7 @@ export class UsersController {
     if (id === u.id) throw new BadRequestException('Ask another administrator to reset your two-step sign-in');
     if (this.env.AUTH_MODE === 'supabase' && target.auth_user_id) {
       const base = `${this.env.SUPABASE_URL}/auth/v1/admin/users/${target.auth_user_id}/factors`;
-      const headers = { apikey: this.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${this.env.SUPABASE_SERVICE_ROLE_KEY}` };
+      const headers = serviceHeaders(this.env.SUPABASE_SERVICE_ROLE_KEY);
       const list = await fetch(base, { headers });
       if (!list.ok) throw new BadRequestException('Could not read this person\'s authenticators');
       for (const f of (await list.json()) as any[]) {
@@ -442,7 +443,7 @@ export class UsersController {
       // Invite-only: the identity provider emails the invitation. There is no public sign-up.
       const res = await fetch(`${this.env.SUPABASE_URL}/auth/v1/invite?redirect_to=${encodeURIComponent(`${this.env.PUBLIC_WEB_URL}/set-password`)}`, {
         method: 'POST',
-        headers: { apikey: this.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${this.env.SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json' },
+        headers: { ...serviceHeaders(this.env.SUPABASE_SERVICE_ROLE_KEY), 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: d.email }),
       });
       if (!res.ok) throw new BadRequestException('The invitation could not be sent');
