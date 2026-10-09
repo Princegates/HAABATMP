@@ -68,6 +68,15 @@ test('1. super admin provisions people; creation rights are limited by role', as
   const viaClient = ok(await api(S.tok_aa).post('/users', { email: email('t5'), full_name: `trainee5 ${run}`, role: 'trainee', organization_id: orgB.id }));
   assert.equal(viaClient.organization_id, orgA.id, 'a client admin can only add to their own organisation, whatever they ask for');
   refused(await sa.post('/users', { email: email('trainee1'), full_name: 'Dup', role: 'trainee' }), 409, 'duplicate email');
+  refused(await sa.post('/users', { email: email('x4'), full_name: 'Staff with a client', role: 'instructor', organization_id: orgA.id }), 400, 'HAAB staff do not belong to a client organisation');
+  refused(await sa.patch(`/users/${S.instr}`, { organization_id: orgA.id }), 400, 'nor can one be moved into a client');
+  const staffList = ok(await sa.get(`/users?group=staff&limit=200`)).data;
+  assert.ok(staffList.length >= 5 && staffList.every((u) => !['trainee', 'org_admin'].includes(u.role) && u.organization_id === null), 'the staff group holds only HAAB staff, none attached to a client');
+  const clientList = ok(await sa.get(`/users?group=client&limit=200`)).data;
+  assert.ok(clientList.every((u) => ['trainee', 'org_admin'].includes(u.role)), 'the client group holds only trainees and client admins');
+  await assert.rejects(db.query(`update users set organization_id = $1 where id = $2`, [orgA.id, S.instr]), /staff_have_no_organisation/, 'the database refuses it too');
+  const promoted = ok(await sa.post('/users', { email: email('t9'), full_name: `trainee9 ${run}`, role: 'trainee', organization_id: orgA.id }));
+  assert.equal(ok(await sa.patch(`/users/${promoted.id}`, { role: 'instructor' })).organization_id, null, 'moving someone into a staff role detaches them from the client');
 });
 
 test('2. catalogue, programme, conflicts and enrolment rules', async () => {
@@ -342,6 +351,26 @@ test('8. client isolation across lists, search, reports and compliance', async (
   refused(await aa.get('/audit'), 403); refused(await aa.get('/settings/pages/training'), [403, 404], 'clients have no settings access');
   refused(await bb.get(`/enrollments?trainee_id=${S.t1}`).then((r) => ({ status: r.body.data.length === 0 ? 404 : 200 })), 404, 'client B cannot list client A enrolments');
   assert.equal(ok(await aa.get('/reports/outstanding')).rows.every((r) => !String(r.client).includes(`Org B ${run}`)), true);
+});
+
+test('8b. trainees are separated by organisation', async () => {
+  const sa = api(S.sa); const aa = api(S.tok_aa); const bb = api(S.tok_bb);
+  const all = ok(await sa.get('/users/by-organization'));
+  const a = all.organizations.find((o) => o.organization_id === S.orgA); const b = all.organizations.find((o) => o.organization_id === S.orgB);
+  assert.ok(a.trainees >= 3 && b.trainees >= 2, 'each client has its own count');
+  assert.ok(typeof all.individuals === 'number', 'staff also see trainees who belong to no organisation');
+  const mine = ok(await aa.get('/users/by-organization'));
+  assert.equal(mine.organizations.length, 1, 'a client admin gets only their own organisation'); assert.equal(mine.organizations[0].organization_id, S.orgA); assert.equal(mine.individuals, null);
+  const onlyB = ok(await sa.get(`/users?role=trainee&organization_id=${S.orgB}&limit=100`)).data;
+  assert.ok(onlyB.length >= 2 && onlyB.every((u) => u.organization_id === S.orgB), 'filtering by organisation returns only that organisation');
+  const none = ok(await sa.get('/users?role=trainee&organization_id=none&limit=100')).data;
+  assert.ok(none.every((u) => u.organization_id === null), 'the individuals view has no organisation members');
+  const sneaky = ok(await aa.get('/users?organization_id=none&limit=100')).data;
+  assert.ok(sneaky.every((u) => u.organization_id === S.orgA), 'a client admin cannot use the individuals view to see others');
+  assert.ok(ok(await sa.get(`/results?organization_id=${S.orgB}`)).data.every((r) => r.organization_name === `Org B ${run}`), 'results filter by organisation');
+  assert.ok(ok(await sa.get(`/certificates?organization_id=${S.orgA}`)).data.every((c) => c.organization_name === `Org A ${run}`), 'certificates filter by organisation');
+  assert.ok(ok(await sa.get(`/enrollments?organization_id=${S.orgA}&limit=100`)).data.every((e) => e.organization_name === `Org A ${run}`), 'registrations filter by organisation');
+  assert.equal(ok(await bb.get(`/users?organization_id=${S.orgA}`)).data.filter((u) => u.organization_id === S.orgA).length, 0, 'asking for another client returns nothing');
 });
 
 test('9. documents: type by content, malware hook, and who can read what', async () => {

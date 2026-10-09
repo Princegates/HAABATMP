@@ -24,7 +24,7 @@ export class ResultsController {
   @Get('results')
   @Require('results:read')
   async list(@CurrentUser() u: AuthUser, @Query() query: unknown) {
-    const f = parse(pageQuery.extend({ programme_id: uuid.optional(), trainee_id: uuid.optional(), status: z.enum(STATUS).optional(), finalised: z.enum(['true', 'false']).optional() }), query);
+    const f = parse(pageQuery.extend({ programme_id: uuid.optional(), trainee_id: uuid.optional(), organization_id: uuid.optional(), status: z.enum(STATUS).optional(), finalised: z.enum(['true', 'false']).optional() }), query);
     const params: any[] = [];
     const where: string[] = [];
     const add = (sql: string, v: any) => { params.push(v); where.push(sql.replace(/\?/g, `$${params.length}`)); };
@@ -33,6 +33,7 @@ export class ResultsController {
     else if (u.role === 'instructor') add(`(p.lead_instructor_id = ? or exists (select 1 from sessions s where s.programme_id = p.id and s.instructor_id = ?))`, u.id);
     if (f.programme_id) add('e.programme_id = ?', f.programme_id);
     if (f.trainee_id && u.role !== 'trainee') add('e.trainee_id = ?', f.trainee_id);
+    if (f.organization_id && seesAllClients(u)) add('t.organization_id = ?', f.organization_id);
     if (f.status) add('r.status = ?', f.status);
     if (f.finalised) add('r.finalised = ?', f.finalised === 'true');
     if (f.q) add('(t.full_name ilike ?)', `%${f.q}%`);

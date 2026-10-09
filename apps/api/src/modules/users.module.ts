@@ -43,7 +43,8 @@ const createBody = z.object({
 });
 const listQuery = pageQuery.extend({
   role: z.enum(ROLES).optional(),
-  organization_id: uuid.optional(),
+  organization_id: z.union([uuid, z.literal('none')]).optional(), // 'none' = individuals with no organisation
+  group: z.enum(['staff', 'client']).optional(), // HAAB staff or client-side users
   status: z.enum(['invited', 'active', 'suspended']).optional(),
 });
 const importBody = z.object({
@@ -57,6 +58,8 @@ const importBody = z.object({
   })).min(1).max(500),
 });
 
+/** Only these roles belong to a client organisation. Everyone else is HAAB staff. */
+const CLIENT_ROLES: Role[] = ['trainee', 'org_admin'];
 const PUBLIC_COLS = `u.id, u.email, u.full_name, u.phone, u.role, u.organization_id, u.status, u.last_login_at, u.created_at, o.name as organization_name`;
 
 @Controller()
@@ -80,16 +83,34 @@ export class UsersController {
       params.push(u.organizationId); where.push(`u.organization_id = $${params.length}`);
       where.push(`u.role = 'trainee'`); // client admins only ever see their own people
     }
+    if (f.group === 'staff') where.push(`u.role not in ('trainee','org_admin')`);
+    if (f.group === 'client') where.push(`u.role in ('trainee','org_admin')`);
     if (f.role) { params.push(f.role); where.push(`u.role = $${params.length}`); }
     if (f.status) { params.push(f.status); where.push(`u.status = $${params.length}`); }
-    if (f.organization_id) { params.push(f.organization_id); where.push(`u.organization_id = $${params.length}`); }
+    if (f.organization_id === 'none') { if (seesAllClients(u)) where.push('u.organization_id is null'); }
+    else if (f.organization_id) { params.push(f.organization_id); where.push(`u.organization_id = $${params.length}`); }
     if (f.q) { params.push(`%${f.q}%`); where.push(`(u.full_name ilike $${params.length} or u.email ilike $${params.length})`); }
     const w = where.length ? `where ${where.join(' and ')}` : '';
     const data = await this.db.query(
       `select ${PUBLIC_COLS} from users u left join organizations o on o.id = u.organization_id ${w}
-        order by u.full_name limit ${f.limit} offset ${f.offset}`, params);
+        order by o.name nulls last, u.full_name limit ${f.limit} offset ${f.offset}`, params);
     const total = (await this.db.one<{ n: number }>(`select count(*) n from users u ${w}`, params))!.n;
     return { data, total };
+  }
+
+  /** Trainee counts per organisation, plus individuals with none. Client admins only ever get their own row. */
+  @Get('users/by-organization')
+  @Require('users:read')
+  async byOrganization(@CurrentUser() u: AuthUser) {
+    const own = seesAllClients(u) ? null : u.organizationId;
+    const orgs = await this.db.query(
+      `select o.id as organization_id, o.name, o.type, o.status,
+              count(t.id) filter (where t.status <> 'suspended') as trainees,
+              count(t.id) filter (where t.status = 'invited') as invited
+         from organizations o left join users t on t.organization_id = o.id and t.role = 'trainee'
+        where ($1::uuid is null or o.id = $1) group by o.id order by o.name`, [own]);
+    const individuals = own ? null : await this.db.one<{ n: number }>(`select count(*) n from users where role = 'trainee' and organization_id is null and status <> 'suspended'`);
+    return { organizations: orgs, individuals: individuals?.n ?? null };
   }
 
   @Get('users/:id')
@@ -145,7 +166,9 @@ export class UsersController {
     const d = parse(createBody, body);
     if (!CAN_CREATE_ROLES[u.role].includes(d.role)) throw new ForbiddenException(`You cannot create ${d.role} accounts`);
     let orgId = d.organization_id ?? null;
-    if (u.role === 'org_admin') orgId = u.organizationId; // client admins can only add to their own organisation
+    if (!CLIENT_ROLES.includes(d.role)) {
+      if (orgId) throw new BadRequestException('HAAB staff do not belong to a client organisation');
+    } else if (u.role === 'org_admin') orgId = u.organizationId; // client admins can only add to their own organisation
     if (d.role === 'org_admin' && !orgId) throw new BadRequestException('An organisation administrator needs an organisation');
     if (orgId) await this.assertOrgExists(orgId);
 
@@ -210,12 +233,16 @@ export class UsersController {
       if (target.role === 'super_admin') await this.assertNotLastSuperAdmin(id);
     }
     if (d.organization_id !== undefined && u.role === 'org_admin') throw new ForbiddenException();
+    const newRole = (d.role ?? target.role) as Role;
+    if (!CLIENT_ROLES.includes(newRole) && d.organization_id) throw new BadRequestException('HAAB staff do not belong to a client organisation');
+    if (newRole === 'org_admin' && (d.organization_id === null || (d.organization_id === undefined && !target.organization_id))) throw new BadRequestException('A client administrator needs an organisation');
+    const staffNow = !CLIENT_ROLES.includes(newRole);
     return this.db.tx(async (q) => {
       const after = await q.one(
         `update users set full_name = coalesce($2, full_name), phone = case when $3 then $4 else phone end,
                 organization_id = case when $5 then $6 else organization_id end, role = coalesce($7, role)
           where id = $1 returning id, email, full_name, phone, role, organization_id, status`,
-        [id, d.full_name ?? null, 'phone' in d, d.phone ?? null, 'organization_id' in d, d.organization_id ?? null, d.role ?? null]);
+        [id, d.full_name ?? null, 'phone' in d, d.phone ?? null, staffNow || 'organization_id' in d, staffNow ? null : d.organization_id ?? null, d.role ?? null]);
       await this.audit.log(q, actor, 'user.update', 'user', id, pickUser(target), after);
       return after;
     });

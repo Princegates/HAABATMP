@@ -36,6 +36,10 @@ async function main() {
     ['trainee1@example.com', 'Ama Mensah', 'trainee', 'Demo Airport Company'],
     ['trainee2@example.com', 'Kofi Boateng', 'trainee', 'Demo Airport Company'],
     ['trainee3@example.com', 'Esi Owusu', 'trainee', 'Demo Ground Handling Ltd'],
+    ['trainee4@example.com', 'Yaw Asante', 'trainee', 'Demo Airport Company'],
+    ['trainee5@example.com', 'Abena Kyei', 'trainee', 'Demo Ground Handling Ltd'],
+    ['trainee6@example.com', 'Nana Quaye', 'trainee', null],
+    ['client.admin2@example.com', 'Ground Handling Client Administrator', 'org_admin', 'Demo Ground Handling Ltd'],
   ];
   for (const [email, name, role, org] of people) {
     const r = await db.query(

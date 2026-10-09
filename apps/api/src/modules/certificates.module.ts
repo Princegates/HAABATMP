@@ -6,6 +6,7 @@ import { AuditService } from '../common/audit.service';
 import { CertificatesService, certStatus } from '../common/certificates.service';
 import { Db } from '../common/db.service';
 import { ActorCtx, CurrentUser, Public, Require } from '../common/decorators';
+import { seesAllClients } from '../common/scope';
 import { SettingsService } from '../common/settings.service';
 import { pageQuery, parse, uuid } from '../common/validation';
 
@@ -58,7 +59,7 @@ export class CertificatesController {
   @Require('certificates:read')
   async list(@CurrentUser() u: AuthUser, @Query() query: unknown) {
     const f = parse(pageQuery.extend({
-      status: z.enum(['valid', 'expiring_soon', 'expired', 'revoked']).optional(), course_id: uuid.optional(), trainee_id: uuid.optional(),
+      status: z.enum(['valid', 'expiring_soon', 'expired', 'revoked']).optional(), course_id: uuid.optional(), trainee_id: uuid.optional(), organization_id: uuid.optional(),
       expiring_within_days: z.coerce.number().int().min(1).max(730).optional(),
     }), query);
     const t = await this.settings.training();
@@ -68,6 +69,7 @@ export class CertificatesController {
     if (u.role === 'trainee') { add('c.trainee_id = ?', u.id); where.push('r.released'); }
     else if (u.role === 'org_admin') { add('t.organization_id = ?', u.organizationId); where.push('r.released'); }
     if (f.course_id) add('c.course_id = ?', f.course_id);
+    if (f.organization_id && seesAllClients(u)) add('t.organization_id = ?', f.organization_id);
     if (f.trainee_id && u.role !== 'trainee') add('c.trainee_id = ?', f.trainee_id);
     if (f.q) add(`(t.full_name ilike ? or c.number ilike ?)`, `%${f.q}%`);
     if (f.expiring_within_days) { where.push(`c.status = 'valid'`); add(`c.expires_at between current_date and current_date + ?::int`, f.expiring_within_days); }
