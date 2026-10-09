@@ -11,7 +11,7 @@ envVarGroups:
       - { key: SUPABASE_STORAGE_BUCKET, value: atmp-documents }
       - { key: DATABASE_SSL, value: "true" }
       - { key: DATABASE_URL, sync: false }          # Supabase pooled connection string
-      - { key: DATABASE_URL_DIRECT, sync: false }   # Supabase direct connection string (migrations)
+      - { key: DATABASE_URL_DIRECT, sync: false }   # optional. Leave it out unless you have the IPv4 add-on; migrations then use DATABASE_URL
       - { key: SUPABASE_URL, sync: false }
       - { key: SUPABASE_ANON_KEY, sync: false }
       - { key: SUPABASE_SERVICE_ROLE_KEY, sync: false }
