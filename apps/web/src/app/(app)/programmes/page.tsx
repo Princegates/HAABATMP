@@ -17,7 +17,7 @@ function Inner() {
   const { can, is } = useAuth();
   const toast = useToast();
   const params = useSearchParams();
-  const courses = useCourseOptions(); const rooms = useClassroomOptions(); const instructors = useInstructorOptions(); const orgs = useOrgOptions(can('programmes:write'));
+  const courses = useCourseOptions(); const rooms = useClassroomOptions(); const instructors = useInstructorOptions(can('users:read')); const orgs = useOrgOptions(can('programmes:write'));
   const [form, setForm] = useState(false);
   const [tick, setTick] = useState(0);
   useEffect(() => { if (params.get('new') && can('programmes:write')) setForm(true); }, [params, can]);

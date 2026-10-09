@@ -3,10 +3,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useApi } from '@/lib/api';
 import { PageHead } from '@/components/ui';
+import { settingsHref as hrefOf } from '@/lib/settings-links';
 
 interface PageItem { key: string; title: string; description: string; kind: 'form' | 'roles' | 'link' | 'integrations'; status: 'active' | 'planned'; can_edit: boolean }
-
-const hrefOf = (p: PageItem) => (p.key === 'users' ? '/settings/users' : p.key === 'roles' ? '/settings/roles' : p.key === 'integrations' ? '/settings/integrations' : p.key === 'certificate_templates' ? '/settings/certificate-templates' : `/settings/${p.key}`);
 
 /** The "System Setting" group: one page per concern, listed down the left like the reference menu. */
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
@@ -18,7 +17,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
       <div style={{ display: 'grid', gridTemplateColumns: '260px minmax(0, 1fr)', gap: 20, alignItems: 'start' }} className="settings-grid">
         <nav className="card" aria-label="Settings pages" style={{ position: 'sticky', top: 76 }}>
           {data?.map((p) => {
-            const href = hrefOf(p);
+            const href = hrefOf(p.key);
             const active = path === href;
             return (
               <Link key={p.key} href={href} aria-current={active ? 'page' : undefined}

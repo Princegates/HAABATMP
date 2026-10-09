@@ -26,7 +26,18 @@ function Inner() {
   const submit = useCallback(async (token: string) => {
     setBusy(true); setOutcome(null);
     try {
-      const pos = await new Promise<GeolocationPosition | null>((res) => { if (!navigator.geolocation) return res(null); navigator.geolocation.getCurrentPosition(res, () => res(null), { timeout: 2500, maximumAge: 60000 }); });
+      // Location is optional and never holds up a check-in: it is used only if the person already allowed it,
+      // and we never wait more than two seconds for it. (A pending permission prompt would otherwise block forever.)
+      const pos = await Promise.race<GeolocationPosition | null>([
+        (async () => {
+          try {
+            if (!navigator.geolocation || !navigator.permissions) return null;
+            if ((await navigator.permissions.query({ name: 'geolocation' as PermissionName })).state !== 'granted') return null;
+            return await new Promise<GeolocationPosition | null>((res) => navigator.geolocation.getCurrentPosition(res, () => res(null), { timeout: 1800, maximumAge: 60000 }));
+          } catch { return null; }
+        })(),
+        new Promise<null>((res) => setTimeout(() => res(null), 2000)),
+      ]);
       const r = await api.post<{ status: string; already: boolean }>('/attendance/qr-checkin', { token, ...(pos ? { latitude: +pos.coords.latitude.toFixed(6), longitude: +pos.coords.longitude.toFixed(6) } : {}) });
       setOutcome({ kind: 'ok', ...r });
     } catch (e) { setOutcome({ kind: 'error', message: (e as ApiError).message }); }

@@ -55,7 +55,7 @@ Sign in with any seeded address, for example `superadmin@example.com`, `admin@ex
 ## Test
 
 ```bash
-npm test -w apps/api            # 9 unit tests and 18 end-to-end tests against a real database
+npm test -w apps/api            # 9 unit tests and 20 end-to-end tests against a real database
 ```
 
 The end-to-end suite walks the whole training lifecycle and then attacks it: client isolation, segregation of

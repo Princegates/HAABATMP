@@ -9,7 +9,7 @@ function useList(path: string | null, map: (r: any) => Opt): Opt[] {
 }
 export const useOrgOptions = (enabled = true) => useList(enabled ? '/organizations?limit=200' : null, (o) => ({ value: o.id, label: o.name }));
 export const useCourseOptions = () => useList('/courses?limit=200', (c) => ({ value: c.id, label: `${c.code} · ${c.title}` }));
-export const useInstructorOptions = () => useList('/users?role=instructor&limit=200', (u) => ({ value: u.id, label: u.full_name }));
+export const useInstructorOptions = (enabled = true) => useList(enabled ? '/users?role=instructor&limit=200' : null, (u) => ({ value: u.id, label: u.full_name }));
 export const useTraineeOptions = (orgId?: string) => useList(`/users?role=trainee&limit=200${orgId ? `&organization_id=${orgId}` : ''}`, (u) => ({ value: u.id, label: `${u.full_name} (${u.email})` }));
 export function useCategoryOptions() {
   const { data } = useApi<any[]>('/course-categories');

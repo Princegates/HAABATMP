@@ -24,7 +24,7 @@ export default function ProgrammePage({ params }: { params: Promise<{ id: string
   const { me, can, is } = useAuth();
   const toast = useToast();
   const prog = useApi<any>(`/programmes/${id}`);
-  const instructors = useInstructorOptions(); const rooms = useClassroomOptions(); const orgs = useOrgOptions(can('programmes:write'));
+  const instructors = useInstructorOptions(can('programmes:write')); const rooms = useClassroomOptions(); const orgs = useOrgOptions(can('programmes:write'));
   const staff = is('super_admin', 'training_admin');
   const [tab, setTab] = useState('overview');
   const [edit, setEdit] = useState(false);

@@ -14,7 +14,7 @@ export default function CalendarPage() {
   const [start, setStart] = useState(() => monday(new Date()));
   const [instructor, setInstructor] = useState('');
   const [room, setRoom] = useState('');
-  const instructors = useInstructorOptions(); const rooms = useClassroomOptions();
+  const instructors = useInstructorOptions(can('programmes:write')); const rooms = useClassroomOptions();
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setUTCDate(d.getUTCDate() + i); return d; }), [start]);
   const from = days[0].toISOString().slice(0, 10); const to = days[6].toISOString().slice(0, 10);
   const { data, error } = useApi<any[]>(`/schedule${qs({ from, to, instructor_id: instructor, classroom_id: room })}`);
