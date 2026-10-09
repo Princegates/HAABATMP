@@ -14,8 +14,8 @@ import '@fontsource/barlow-condensed/700.css';
 import './globals.css';
 import { ToastProvider } from '@/components/toast';
 
-export const metadata: Metadata = { title: { default: 'HAAB Training Platform', template: '%s | HAAB Training' }, description: 'HAAB Aviation Consultancy Services training management.', robots: { index: false, follow: false } };
-export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#0a0c0f' };
+export const metadata: Metadata = { title: { default: 'HAAB Training Platform', template: '%s | HAAB Training' }, description: 'HAAB Aviation Consultancy Services training management.', robots: { index: false, follow: false }, icons: { icon: [{ url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }], apple: '/icons/apple-touch-icon.png' }, appleWebApp: { capable: true, title: 'HAAB Training', statusBarStyle: 'black-translucent' }, formatDetection: { telephone: false } };
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover', themeColor: '#0a0c0f' };
 
 // Applies the saved theme before first paint so there is no flash of the wrong one.
 const themeScript = `try{var t=localStorage.getItem('haab-theme');if(t==='day'||t==='night')document.documentElement.setAttribute('data-theme',t)}catch(e){}`;

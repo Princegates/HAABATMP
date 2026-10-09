@@ -19,6 +19,7 @@ function LoginForm() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [forgot, setForgot] = useState(false);
+  const [showPw, setShowPw] = useState(false);
   const [canRegister, setCanRegister] = useState(false);
   useEffect(() => { fetch('/api/registration/status').then((r) => r.json()).then((s) => setCanRegister(Boolean(s.enabled))).catch(() => undefined); }, []);
   const [forgotDone, setForgotDone] = useState(false);
@@ -52,53 +53,82 @@ function LoginForm() {
 
   return (
     <div className="login">
-      <div className="login-hero">
-        <Logo height={64} />
+      <aside className="login-hero">
+        <svg className="hero-art" viewBox="0 0 760 760" fill="none" stroke="currentColor" strokeWidth="1" aria-hidden="true">
+          <circle cx="480" cy="480" r="110" /><circle cx="480" cy="480" r="190" /><circle cx="480" cy="480" r="270" /><circle cx="480" cy="480" r="350" /><circle cx="480" cy="480" r="430" />
+          <path d="M30 640 C 220 380, 430 330, 720 110" /><path d="M30 700 C 240 470, 450 420, 740 190" opacity="0.5" />
+          <circle cx="720" cy="110" r="4" fill="currentColor" stroke="none" />
+        </svg>
+        <div className="hero-logo"><Logo height={72} /></div>
         <div>
           <div className="eyebrow">Training management platform</div>
           <h1>Training records you can <em>stand behind</em></h1>
           <p>Courses, attendance, assessments and certificates for HAAB Aviation Consultancy Services, kept in one controlled place and ready for any audit.</p>
+          <ul className="hero-points">
+            <li><b>Attendance</b><span>Rotating QR codes check trainees in on the day.</span></li>
+            <li><b>Assessments</b><span>Timed exams and marked results, with two-person control.</span></li>
+            <li><b>Certificates</b><span>Every certificate carries a code anyone can verify.</span></li>
+          </ul>
         </div>
-        <div className="label" style={{ color: 'var(--brand-fog)' }}>ICAO-aligned · Africa-focused · Future-ready</div>
-      </div>
-      <div className="login-panel">
-        <div className="login-form stack" style={{ gap: 20 }}>
-          <div className="row between"><div className="label">{stage.kind === 'mfa' ? 'Second step' : 'Sign in'}</div><ThemeToggleLight /></div>
-          {stage.kind === 'password' ? (
-            <form onSubmit={signIn} className="stack" noValidate>
-              <div><h2>Welcome <span className="accent">back</span></h2><p className="muted">Use the email address HAAB registered for you.{canRegister ? '' : ' Accounts are created by an administrator.'}</p></div>
-              {params.get('step') === 'mfa' && <div className="alert info">A second step is needed for your account. Sign in again to continue.</div>}
-              <div className="field"><label htmlFor="email">Email</label><input id="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></div>
-              <div className="field"><label htmlFor="password">Password</label><input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
-              {error && <div className="alert danger" role="alert">{error}</div>}
-              <button className="btn" disabled={busy || !email || !password}>{busy ? 'Signing in…' : 'Sign in'}</button>
-              {forgot ? (
-                <div className="stack tight" style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
-                  {forgotDone ? <div className="alert ok" role="status">If that address is registered, a link to set a new password is on its way. It can take a few minutes.</div> : <>
-                    <p className="muted" style={{ fontSize: 13.5 }}>Enter your email address and we will send a link to choose a new password.</p>
-                    <button type="button" className="btn outline" disabled={busy || !email} onClick={async () => { setBusy(true); try { await post('/api/auth/forgot', { email }); } catch { /* the answer is the same either way */ } setForgotDone(true); setBusy(false); }}>Send me a link</button></>}
+        <div className="hero-foot">ICAO-aligned · Africa-focused · Future-ready</div>
+      </aside>
+      <main className="login-panel">
+        <div className="login-form">
+          <div className="login-top">
+            <div className="mobile-logo"><Logo adaptive height={54} /></div>
+            <span style={{ marginLeft: 'auto' }}><ThemeToggleLight /></span>
+          </div>
+          <div className="login-card">
+            {stage.kind === 'password' ? (
+              <form onSubmit={signIn} className="stack" noValidate>
+                <div>
+                  <h2>Welcome <span className="accent">back</span></h2>
+                  <p className="lead">Sign in with the email address HAAB registered for you.{canRegister ? '' : ' Accounts are created by an administrator.'}</p>
                 </div>
-              ) : <button type="button" className="btn ghost" style={{ alignSelf: 'flex-start', paddingInline: 0, textTransform: 'none', letterSpacing: 0, fontFamily: 'var(--font-body)', fontWeight: 400, fontSize: 14 }} onClick={() => setForgot(true)}>Forgotten your password?</button>}
-              {canRegister && <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }} className="muted">New trainee? <Link href="/register" style={{ color: 'var(--accent-text, inherit)', textDecoration: 'underline' }}>Request an account</Link></div>}
-            </form>
-          ) : (
-            <form onSubmit={verify} className="stack" noValidate>
-              <div><h2>Confirm it&apos;s <span className="accent">you</span></h2>
-                <p className="muted">{stage.qr ? 'Scan this code with an authenticator app, then enter the six digits it shows.' : 'Enter the six-digit code from your authenticator app.'}</p></div>
-              {stage.qr && (
-                <div className="stack tight" style={{ alignItems: 'center' }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={stage.qr.startsWith('data:') ? stage.qr : `data:image/svg+xml;utf8,${encodeURIComponent(stage.qr)}`} alt="QR code for your authenticator app" width={176} height={176} style={{ background: '#fff', padding: 8 }} />
-                  {stage.secret && <span className="muted" style={{ fontSize: 12.5 }}>Or type this key: <code style={{ userSelect: 'all' }}>{stage.secret}</code></span>}
+                {params.get('step') === 'mfa' && <div className="alert info">A second step is needed for your account. Sign in again to continue.</div>}
+                <div className="field"><label htmlFor="email">Email</label><input id="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></div>
+                <div className="field">
+                  <label htmlFor="password">Password</label>
+                  <div className="pw-wrap">
+                    <input id="password" type={showPw ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                    <button type="button" className="pw-toggle" onClick={() => setShowPw((v) => !v)} aria-pressed={showPw} aria-label={showPw ? 'Hide password' : 'Show password'}>{showPw ? 'Hide' : 'Show'}</button>
+                  </div>
                 </div>
-              )}
-              <div className="field"><label htmlFor="code">Six-digit code</label><input id="code" inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} autoFocus style={{ letterSpacing: '0.5em', fontSize: 22, textAlign: 'center' }} /></div>
-              {error && <div className="alert danger" role="alert">{error}</div>}
-              <button className="btn" disabled={busy || code.length !== 6}>{busy ? 'Checking…' : 'Verify and continue'}</button>
-            </form>
-          )}
+                {error && <div className="alert danger" role="alert">{error}</div>}
+                <button className="btn" disabled={busy || !email || !password}>{busy ? 'Signing in…' : 'Sign in'}</button>
+                {forgot ? (
+                  <div className="stack tight" style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                    {forgotDone ? <div className="alert ok" role="status">If that address is registered, a link to set a new password is on its way. It can take a few minutes.</div> : <>
+                      <p className="muted" style={{ fontSize: 13.5, margin: 0 }}>Enter your email address above and we will send a link to choose a new password.</p>
+                      <button type="button" className="btn outline" disabled={busy || !email} onClick={async () => { setBusy(true); try { await post('/api/auth/forgot', { email }); } catch { /* the answer is the same either way */ } setForgotDone(true); setBusy(false); }}>Send me a link</button></>}
+                  </div>
+                ) : (
+                  <div className="login-links">
+                    <button type="button" onClick={() => setForgot(true)}>Forgotten your password?</button>
+                    {canRegister && <Link href="/register">Request an account</Link>}
+                  </div>
+                )}
+              </form>
+            ) : (
+              <form onSubmit={verify} className="stack" noValidate>
+                <div><h2>Confirm it&apos;s <span className="accent">you</span></h2>
+                  <p className="lead">{stage.qr ? 'Scan this code with an authenticator app, then enter the six digits it shows.' : 'Enter the six-digit code from your authenticator app.'}</p></div>
+                {stage.qr && (
+                  <div className="stack tight" style={{ alignItems: 'center' }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={stage.qr.startsWith('data:') ? stage.qr : `data:image/svg+xml;utf8,${encodeURIComponent(stage.qr)}`} alt="QR code for your authenticator app" width={176} height={176} style={{ background: '#fff', padding: 8 }} />
+                    {stage.secret && <span className="muted" style={{ fontSize: 12.5 }}>Or type this key: <code style={{ userSelect: 'all' }}>{stage.secret}</code></span>}
+                  </div>
+                )}
+                <div className="field"><label htmlFor="code">Six-digit code</label><input id="code" inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} autoFocus style={{ letterSpacing: '0.5em', fontSize: 22, textAlign: 'center' }} /></div>
+                {error && <div className="alert danger" role="alert">{error}</div>}
+                <button className="btn" disabled={busy || code.length !== 6}>{busy ? 'Checking…' : 'Verify and continue'}</button>
+              </form>
+            )}
+          </div>
+          <p className="login-note">For authorised users only. Sign-ins and activity are recorded.</p>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

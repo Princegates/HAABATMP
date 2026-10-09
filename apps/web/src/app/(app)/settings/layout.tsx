@@ -15,7 +15,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
     <>
       <PageHead title="System" accent="setting" subtitle="Organisation details, rules and connections. Each page saves on its own and every change is recorded in the audit log." />
       <div style={{ display: 'grid', gridTemplateColumns: '260px minmax(0, 1fr)', gap: 20, alignItems: 'start' }} className="settings-grid">
-        <nav className="card" aria-label="Settings pages" style={{ position: 'sticky', top: 76 }}>
+        <nav className="card settings-nav" aria-label="Settings pages" style={{ position: 'sticky', top: 76 }}>
           {data?.map((p) => {
             const href = hrefOf(p.key);
             const active = path === href;

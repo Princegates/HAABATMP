@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, useApi } from '@/lib/api';
 import { AuthProvider, ROLE_LABEL, useAuth } from '@/lib/auth';
 import { dateTime, initials } from '@/lib/format';
-import { navFor } from '@/lib/nav';
+import { navFor, TABS } from '@/lib/nav';
 import { Icon } from './icons';
 import { Logo } from './logo';
 import { useDebounced } from './ui';
@@ -53,6 +53,7 @@ function GlobalSearch() {
   const [q, setQ] = useState('');
   const dq = useDebounced(q, 250);
   const [open, setOpen] = useState(false);
+  const [sheet, setSheet] = useState(false); // phones: the search box opens full width over the top bar
   const { data } = useApi<{ groups: { type: string; label: string; items: { id: string; title: string; subtitle?: string }[] }[] }>(dq.trim().length >= 2 ? `/search?q=${encodeURIComponent(dq.trim())}` : null);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -61,9 +62,12 @@ function GlobalSearch() {
     return () => document.removeEventListener('mousedown', close);
   }, []);
   return (
-    <div className="search" ref={box}>
+    <>
+    <button className="icon-btn search-toggle" aria-label="Search" onClick={() => setSheet(true)}><Icon name="search" /></button>
+    <div className={`search ${sheet ? 'sheet' : ''}`} ref={box}>
       <Icon name="search" />
-      <input type="search" placeholder="Search trainees, courses, certificates" aria-label="Global search" value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onKeyDown={(e) => e.key === 'Escape' && setOpen(false)} />
+      <input type="search" placeholder="Search trainees, courses, certificates" aria-label="Global search" autoFocus={sheet} value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onKeyDown={(e) => e.key === 'Escape' && setOpen(false)} />
+      {sheet && <button className="icon-btn search-close" aria-label="Close search" onClick={() => { setSheet(false); setOpen(false); setQ(''); }}><Icon name="x" /></button>}
       {open && dq.trim().length >= 2 && (
         <div className="pop" style={{ left: 0, right: 0, minWidth: 0 }}>
           {!data && <div className="group muted">Searching…</div>}
@@ -77,6 +81,7 @@ function GlobalSearch() {
         </div>
       )}
     </div>
+    </>
   );
 }
 
@@ -148,22 +153,61 @@ function Account() {
   );
 }
 
+/** Phones: the four things this role does most, one thumb-tap away. "More" opens the full menu. */
+function BottomBar({ menuOpen, onMore }: { menuOpen: boolean; onMore: () => void }) {
+  const { me } = useAuth();
+  const path = usePathname();
+  const tabs = TABS[me.role];
+  const onTab = tabs.some((t) => isActive(path, t.href));
+  return (
+    <nav className="tabbar" aria-label="Quick navigation">
+      {tabs.map((t) => {
+        const on = isActive(path, t.href) && !menuOpen;
+        return <Link key={t.href} href={t.href} className={`tab ${on ? 'on' : ''}`} aria-current={on ? 'page' : undefined}><Icon name={t.icon} /><span>{t.label}</span></Link>;
+      })}
+      <button className={`tab ${menuOpen || !onTab ? 'on' : ''}`} onClick={onMore} aria-expanded={menuOpen}><Icon name="menu" /><span>More</span></button>
+    </nav>
+  );
+}
+
+/** Gives every table cell its column title, so on phones each row can be shown as a card ("Status: Active"). */
+function useCellLabels(path: string) {
+  useEffect(() => {
+    const label = () => {
+      document.querySelectorAll<HTMLTableElement>('table.table').forEach((t) => {
+        const heads = [...t.querySelectorAll('thead th')].map((h) => h.textContent?.trim() ?? '');
+        t.querySelectorAll('tbody tr').forEach((r) => [...r.children].forEach((c, i) => { if (c instanceof HTMLElement && c.tagName === 'TD' && !c.dataset.label && heads[i]) c.dataset.label = heads[i]; }));
+      });
+    };
+    label();
+    const root = document.getElementById('content');
+    if (!root) return;
+    let raf = 0;
+    const obs = new MutationObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(label); });
+    obs.observe(root, { childList: true, subtree: true });
+    return () => { obs.disconnect(); cancelAnimationFrame(raf); };
+  }, [path]);
+}
+
 function Frame({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const path = usePathname();
   useEffect(() => setOpen(false), [path]);
+  useCellLabels(path);
   return (
     <div className="shell">
       <Sidebar open={open} onNavigate={() => setOpen(false)} />
+      {open && <button className="drawer-scrim" aria-label="Close menu" onClick={() => setOpen(false)} />}
       <div className="main">
         <header className="topbar">
-          <button className="icon-btn menu-btn" aria-label="Open menu" onClick={() => setOpen((o) => !o)}><Icon name="menu" /></button>
+          <Link href="/" className="topbar-logo" aria-label="Home"><Logo height={30} /></Link>
           <GlobalSearch />
           <div className="grow" />
           <ThemeToggle /><Bell /><Account />
         </header>
         <main className="content" id="content">{children}</main>
       </div>
+      <BottomBar menuOpen={open} onMore={() => setOpen((o) => !o)} />
     </div>
   );
 }

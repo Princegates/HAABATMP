@@ -8,6 +8,18 @@ const STAFF: Role[] = ['super_admin', 'training_admin'];
 const READERS: Role[] = [...STAFF, 'auditor'];
 const ALL: Role[] = ['super_admin', 'training_admin', 'instructor', 'trainee', 'org_admin', 'finance_officer', 'auditor'];
 
+export interface Tab { label: string; href: string; icon: IconName }
+/** The four things each role does most, shown in the bottom bar on phones. "More" opens the full menu. */
+export const TABS: Record<Role, Tab[]> = {
+  trainee: [{ label: 'Home', href: '/', icon: 'dashboard' }, { label: 'Training', href: '/enrolments', icon: 'book' }, { label: 'Check in', href: '/checkin', icon: 'qr' }, { label: 'Results', href: '/results', icon: 'chart' }],
+  super_admin: [{ label: 'Home', href: '/', icon: 'dashboard' }, { label: 'Trainees', href: '/trainees', icon: 'users' }, { label: 'Programmes', href: '/programmes', icon: 'calendar' }, { label: 'Attendance', href: '/attendance', icon: 'attendance' }],
+  training_admin: [{ label: 'Home', href: '/', icon: 'dashboard' }, { label: 'Trainees', href: '/trainees', icon: 'users' }, { label: 'Programmes', href: '/programmes', icon: 'calendar' }, { label: 'Attendance', href: '/attendance', icon: 'attendance' }],
+  instructor: [{ label: 'Home', href: '/', icon: 'dashboard' }, { label: 'Programmes', href: '/programmes', icon: 'calendar' }, { label: 'Attendance', href: '/attendance', icon: 'attendance' }, { label: 'Marking', href: '/marking', icon: 'file' }],
+  org_admin: [{ label: 'Home', href: '/', icon: 'dashboard' }, { label: 'Trainees', href: '/trainees', icon: 'users' }, { label: 'Enrolments', href: '/enrolments', icon: 'list' }, { label: 'Results', href: '/results', icon: 'chart' }],
+  finance_officer: [{ label: 'Home', href: '/', icon: 'dashboard' }, { label: 'Invoices', href: '/invoices', icon: 'card' }, { label: 'Clients', href: '/clients', icon: 'building' }, { label: 'Enrolments', href: '/enrolments', icon: 'list' }],
+  auditor: [{ label: 'Home', href: '/', icon: 'dashboard' }, { label: 'Audit', href: '/audit', icon: 'shield' }, { label: 'Compliance', href: '/compliance', icon: 'attendance' }, { label: 'Reports', href: '/reports', icon: 'reports' }],
+};
+
 /** Same pattern as the reference: one group per module, sub-pages inside. Items a role cannot use are never rendered. */
 export const NAV: NavGroup[] = [
   { label: 'Dashboard', icon: 'dashboard', href: '/', roles: ALL },
