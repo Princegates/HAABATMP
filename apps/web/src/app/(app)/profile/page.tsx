@@ -58,11 +58,20 @@ function SecurityCard() {
 }
 
 export default function ProfilePage() {
-  const { data, reload } = useApi<any>('/profile');
+  const { me } = useAuth();
+  const isTrainee = me.role === 'trainee';
+  const { data, reload } = useApi<any>(isTrainee ? '/profile' : null);
   const toast = useToast();
   const [v, setV] = useState<Record<string, any>>({});
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (data !== undefined) setV(Object.fromEntries(fields.map((f) => [f.name, f.name === 'id_number' ? '' : data?.[f.name] ?? '']))); }, [data]);
+  if (!isTrainee) return (
+    <>
+      <PageHead title="My" accent="account" subtitle="Your sign-in details and security." />
+      <Card title="Signed in as"><div className="stack tight"><b style={{ fontWeight: 600 }}>{me.full_name}</b><span className="muted">{me.email}</span></div></Card>
+      <SecurityCard />
+    </>
+  );
   if (data === undefined) return <Loading />;
   return (
     <>

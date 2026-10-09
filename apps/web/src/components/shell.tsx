@@ -140,7 +140,7 @@ function Account() {
       {open && (
         <div className="pop right" style={{ minWidth: 260 }}>
           <div className="group"><b style={{ fontWeight: 600 }}>{me.full_name}</b><div className="muted" style={{ fontSize: 13 }}>{me.email}</div><div className="muted" style={{ fontSize: 13 }}>{ROLE_LABEL[me.role]}{me.organization ? ` · ${me.organization.name}` : ''}</div></div>
-          {me.role === 'trainee' && <Link href="/profile" className="item" onClick={() => setOpen(false)}>My profile</Link>}
+          <Link href="/profile" className="item" onClick={() => setOpen(false)}>{me.role === 'trainee' ? 'My profile' : 'My account'}</Link>
           <button className="item" onClick={signOut}>Sign out</button>
         </div>
       )}
