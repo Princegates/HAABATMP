@@ -62,6 +62,16 @@ npm run create-super-admin -w apps/api -- you@yourdomain.com "Your Name"
 An invitation email arrives. The link opens the set-password page; choose a password, and sign in. Two-step sign-in is optional and off by default: turn it on yourself under **My profile**, or require it for chosen roles under **System setting > Security Setting**. The command refuses to
 run again once a super administrator exists.
 
+### Load HAAB's course categories
+
+From the API service's shell, once:
+
+```bash
+npm run seed-catalogue -w apps/api
+```
+
+It adds the eight training categories and one draft placeholder course for each offering. It creates no people and no passwords, and running it again changes nothing. The courses stay drafts until HAAB sets their real duration, fee and validity.
+
 ## 6. Email
 
 Create a Resend account, verify your sending domain (it gives you DNS records to add; **merge** its SPF entry into any
