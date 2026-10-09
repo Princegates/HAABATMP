@@ -3,7 +3,7 @@ import type { MetadataRoute } from 'next';
 /** Lets people install the platform on a phone's home screen. It then opens full screen, like an app. */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'HAAB Training Platform',
+    name: 'HAAB Training Management Platform',
     short_name: 'HAAB Training',
     description: 'Training management for HAAB Aviation Consultancy Services.',
     start_url: '/',

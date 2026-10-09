@@ -229,6 +229,9 @@ input[disabled], select[disabled], textarea[disabled] { opacity: 0.6; }
 .hero-art { position: absolute !important; z-index: 0 !important; right: -140px; bottom: -160px; width: 760px; max-width: none; color: var(--brand-gold); opacity: 0.22; pointer-events: none; }
 .hero-center { display: flex; flex-direction: column; align-items: center; gap: 28px; text-align: center; }
 .hero-center .brand-logo { align-self: center; }
+.hero-title { font-size: clamp(30px, 2.8vw, 42px); line-height: 1.12; text-wrap: balance; color: #fff; margin: 4px 0 0; font-weight: 300; }
+.hero-title em { color: var(--brand-gold-2); }
+.mobile-title { font-family: var(--font-label); font-weight: 600; font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent-text); margin-top: 8px; }
 .login-hero .eyebrow { font-family: var(--font-label); font-weight: 600; letter-spacing: 0.3em; font-size: 12.5px; text-transform: uppercase; color: var(--brand-gold-2); display: flex; align-items: center; gap: 14px; }
 .login-hero .eyebrow::before { content: ''; width: 48px; height: 1px; background: var(--brand-gold); }
 .login-hero h1 { color: #fff; font-size: clamp(40px, 4.6vw, 64px); line-height: 1.04; margin: 22px 0 18px; max-width: 17ch; }

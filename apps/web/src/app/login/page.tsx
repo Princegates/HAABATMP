@@ -61,13 +61,14 @@ function LoginForm() {
         </svg>
         <div className="hero-center">
           <Logo height={132} />
+          <h1 className="hero-title">Training Management <em>Platform</em></h1>
           <div className="hero-foot">ICAO-aligned · Africa-focused · Future-ready</div>
         </div>
       </aside>
       <main className="login-panel">
         <div className="login-form">
           <div className="login-top">
-            <div className="mobile-logo"><Logo adaptive height={54} /></div>
+            <div className="mobile-logo"><Logo adaptive height={54} /><div className="mobile-title">Training Management Platform</div></div>
             <span style={{ marginLeft: 'auto' }}><ThemeToggleLight /></span>
           </div>
           <div className="login-card">
