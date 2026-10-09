@@ -1,28 +1,19 @@
-/* HAAB brand tokens, taken from the variables on haabaviation.com. Change the brand here and nowhere else. */
+/*
+ * HAAB brand tokens. Source: the CSS variables on haabaviation.com (see docs/BRAND.md).
+ * Two themes:  night = the website's own dark look,  day = warm paper work area.
+ * Components must use ONLY the semantic tokens below, never a raw hex value, so both themes stay in step.
+ * Theme selection: <html data-theme="day|night">. With no attribute, the device preference decides.
+ */
+
 :root {
-  /* site palette, verbatim */
-  --ink: #0a0c0f;
-  --ink-2: #111418;
-  --ink-3: #181d24;
-  --gold: #b8966e;
-  --gold-2: #d4b896;
-  --cream: #e8e4dc;
-  --fog: #9ea8b4;
-  --line-dark: rgba(184, 150, 110, 0.18);
-
-  /* work-area palette derived from the same hues, for readable tables and forms */
-  --gold-hover: #a58459;
-  --gold-wash: #f5efe6;
-  --paper: #f7f5f1;
-  --card: #ffffff;
-  --text: #14181d;
-  --text-muted: #5a6470;
-  --line: #e3ded4;
-
-  --ok: #2f6b4f;
-  --warn: #946212;
-  --danger: #9b2c2c;
-  --info: #2c5282;
+  /* brand palette, verbatim from the site */
+  --brand-ink: #0a0c0f;
+  --brand-ink-2: #111418;
+  --brand-ink-3: #181d24;
+  --brand-gold: #b8966e;
+  --brand-gold-2: #d4b896;
+  --brand-cream: #e8e4dc;
+  --brand-fog: #9ea8b4;
 
   --font-display: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
   --font-label: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif;
@@ -34,4 +25,86 @@
   --btn-tracking: 2.5px;
   --radius: 0;
   --sidebar-w: 248px;
+  color-scheme: light;
+}
+
+/* ------------------------------------------------------------ day */
+:root,
+:root[data-theme='day'] {
+  --bg: #f7f5f1;
+  --surface: #ffffff;
+  --surface-2: #f1eee8;
+  --border: #e3ded4;
+  --text: #14181d;
+  --text-muted: #5a6470;
+
+  --accent: var(--brand-gold);          /* fills: buttons, active bars */
+  --accent-hover: #a58459;
+  --accent-contrast: var(--brand-ink);  /* text on an accent fill */
+  --accent-text: #86683f;               /* gold used as text on white (passes contrast) */
+  --accent-wash: #f5efe6;
+
+  --chrome-bg: var(--brand-ink);        /* sidebar and top bar stay dark in both themes, like the site */
+  --chrome-text: var(--brand-cream);
+  --chrome-muted: var(--brand-fog);
+  --chrome-line: rgba(184, 150, 110, 0.18);
+
+  --ok: #2f6b4f;   --ok-bg: #e7f1ec;
+  --warn: #8a5a0b; --warn-bg: #f8eed9;
+  --danger: #9b2c2c; --danger-bg: #f7e4e4;
+  --info: #2c5282; --info-bg: #e5edf7;
+
+  --shadow: 0 1px 2px rgba(10, 12, 15, 0.06);
+  color-scheme: light;
+}
+
+/* ------------------------------------------------------------ night */
+:root[data-theme='night'] {
+  --bg: var(--brand-ink);
+  --surface: var(--brand-ink-2);
+  --surface-2: var(--brand-ink-3);
+  --border: rgba(184, 150, 110, 0.18);
+  --text: var(--brand-cream);
+  --text-muted: var(--brand-fog);
+
+  --accent: var(--brand-gold);
+  --accent-hover: var(--brand-gold-2);
+  --accent-contrast: var(--brand-ink);
+  --accent-text: var(--brand-gold-2);
+  --accent-wash: rgba(184, 150, 110, 0.1);
+
+  --chrome-bg: #06080a;
+  --chrome-text: var(--brand-cream);
+  --chrome-muted: var(--brand-fog);
+  --chrome-line: rgba(184, 150, 110, 0.18);
+
+  --ok: #6fbf97;   --ok-bg: rgba(111, 191, 151, 0.12);
+  --warn: #e0b45c; --warn-bg: rgba(224, 180, 92, 0.12);
+  --danger: #ee8a8a; --danger-bg: rgba(238, 138, 138, 0.12);
+  --info: #8db4e8; --info-bg: rgba(141, 180, 232, 0.12);
+
+  --shadow: none;
+  color-scheme: dark;
+}
+
+/* follow the device when the user has not chosen */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg: var(--brand-ink);
+    --surface: var(--brand-ink-2);
+    --surface-2: var(--brand-ink-3);
+    --border: rgba(184, 150, 110, 0.18);
+    --text: var(--brand-cream);
+    --text-muted: var(--brand-fog);
+    --accent-hover: var(--brand-gold-2);
+    --accent-text: var(--brand-gold-2);
+    --accent-wash: rgba(184, 150, 110, 0.1);
+    --chrome-bg: #06080a;
+    --ok: #6fbf97;   --ok-bg: rgba(111, 191, 151, 0.12);
+    --warn: #e0b45c; --warn-bg: rgba(224, 180, 92, 0.12);
+    --danger: #ee8a8a; --danger-bg: rgba(238, 138, 138, 0.12);
+    --info: #8db4e8; --info-bg: rgba(141, 180, 232, 0.12);
+    --shadow: none;
+    color-scheme: dark;
+  }
 }

@@ -49,3 +49,13 @@ tables and forms. Headings use the serif; labels and buttons use the condensed u
   Ground Handling Operations; Security Screening (ICAO Annex 17); ICAO & ACI Certification Preparation;
   ARFF & AVSEC; Wildlife Hazard Management.
 - Voice: plain, formal, outcome-focused ("From strategy to delivery").
+
+## Day and night mode
+- Night is the website's own dark look; day is a warm paper work area built from the same hues.
+- Components use semantic tokens only (`--bg`, `--surface`, `--text`, `--accent`, ...) so both themes stay consistent.
+- Default follows the device (`prefers-color-scheme`). A header toggle sets `data-theme="day|night"` on `<html>`
+  and remembers the choice in localStorage (read inside try/catch). A tiny inline script in the document head
+  applies the stored choice before first paint, so there is no flash of the wrong theme.
+- The sidebar and top bar are dark in both themes, as on the website.
+- Gold used as TEXT on white uses `--accent-text` (#86683f) because the brand gold fails contrast on white.
+- Printed output (certificates, invoices, PDF reports) is always day mode on white.
