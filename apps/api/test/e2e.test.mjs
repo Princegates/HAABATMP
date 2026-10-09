@@ -605,3 +605,30 @@ test('17. two-step sign-in is optional by default and the Super Admin can requir
   } finally { ok(await sa.put('/settings/pages/security', { mfa_required_roles: [] })); }
   assert.equal(ok(await fin.get('/auth/me')).mfa_required, false, 'back to optional');
 });
+
+test('18. trainee self-registration: off by default, Super Admin switches it on, HAAB approves', async () => {
+  const sa = api(S.sa);
+  const who = email('selfreg');
+  refused(await http('POST', '/registration', null, { email: who, full_name: 'Self Registered' }), 404, 'closed by default');
+  assert.equal((await http('GET', '/registration/status')).body.enabled, false);
+  refused(await api(S.tok_a1).put('/settings/pages/registration', { enabled: true, notice: '' }), [403, 404], 'only the Super Admin switches it on');
+  ok(await sa.put('/settings/pages/registration', { enabled: true, notice: 'Use your work email.' }));
+  try {
+    assert.equal((await http('GET', '/registration/status')).body.enabled, true);
+    const r1 = ok(await http('POST', '/registration', null, { email: who, full_name: 'Self Registered', organisation: 'Some Airline' }));
+    const again = ok(await http('POST', '/registration', null, { email: who, full_name: 'Self Registered' }));
+    assert.deepEqual(r1, again, 'a repeat looks identical');
+    const existing = ok(await http('POST', '/registration', null, { email: email('super'), full_name: 'Someone Else' }));
+    assert.deepEqual(existing, r1, 'an existing account looks identical, so nobody can probe for accounts');
+    ok(await http('POST', '/registration', null, { email: email('bot'), full_name: 'Bot', website: 'http://spam' }));
+    refused(await api(S.tok_fin).get('/registrations'), 403, 'finance cannot see requests');
+    const pending = ok(await sa.get('/registrations')).data.filter((r) => r.email === who);
+    assert.equal(pending.length, 1, 'one request, not two');
+    assert.equal(ok(await sa.get('/registrations')).data.some((r) => r.email === email('bot')), false, 'honeypot submissions are dropped');
+    const approved = ok(await sa.post(`/registrations/${pending[0].id}/approve`, { organization_id: S.orgA }));
+    assert.equal(approved.role, 'trainee');
+    assert.equal(approved.organization_id, S.orgA);
+    refused(await sa.post(`/registrations/${pending[0].id}/approve`, {}), 409, 'cannot decide twice');
+  } finally { ok(await sa.put('/settings/pages/registration', { enabled: false, notice: '' })); }
+  refused(await http('POST', '/registration', null, { email: email('late'), full_name: 'Too Late' }), 404, 'closed again');
+});

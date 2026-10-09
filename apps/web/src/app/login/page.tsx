@@ -1,5 +1,6 @@
 'use client';
-import { Suspense, useState } from 'react';
+import Link from 'next/link';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Logo } from '@/components/logo';
 import { ThemeToggle } from '@/components/shell';
@@ -18,6 +19,8 @@ function LoginForm() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [forgot, setForgot] = useState(false);
+  const [canRegister, setCanRegister] = useState(false);
+  useEffect(() => { fetch('/api/registration/status').then((r) => r.json()).then((s) => setCanRegister(Boolean(s.enabled))).catch(() => undefined); }, []);
   const [forgotDone, setForgotDone] = useState(false);
 
   async function post(url: string, body: unknown) {
@@ -63,7 +66,7 @@ function LoginForm() {
           <div className="row between"><div className="label">{stage.kind === 'mfa' ? 'Second step' : 'Sign in'}</div><ThemeToggleLight /></div>
           {stage.kind === 'password' ? (
             <form onSubmit={signIn} className="stack" noValidate>
-              <div><h2>Welcome <span className="accent">back</span></h2><p className="muted">Use the email address HAAB registered for you. Accounts are created by an administrator.</p></div>
+              <div><h2>Welcome <span className="accent">back</span></h2><p className="muted">Use the email address HAAB registered for you.{canRegister ? '' : ' Accounts are created by an administrator.'}</p></div>
               {params.get('step') === 'mfa' && <div className="alert info">A second step is needed for your account. Sign in again to continue.</div>}
               <div className="field"><label htmlFor="email">Email</label><input id="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></div>
               <div className="field"><label htmlFor="password">Password</label><input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
@@ -76,6 +79,7 @@ function LoginForm() {
                     <button type="button" className="btn outline" disabled={busy || !email} onClick={async () => { setBusy(true); try { await post('/api/auth/forgot', { email }); } catch { /* the answer is the same either way */ } setForgotDone(true); setBusy(false); }}>Send me a link</button></>}
                 </div>
               ) : <button type="button" className="btn ghost" style={{ alignSelf: 'flex-start', paddingInline: 0, textTransform: 'none', letterSpacing: 0, fontFamily: 'var(--font-body)', fontWeight: 400, fontSize: 14 }} onClick={() => setForgot(true)}>Forgotten your password?</button>}
+              {canRegister && <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }} className="muted">New trainee? <Link href="/register" style={{ color: 'var(--accent-text, inherit)', textDecoration: 'underline' }}>Request an account</Link></div>}
             </form>
           ) : (
             <form onSubmit={verify} className="stack" noValidate>

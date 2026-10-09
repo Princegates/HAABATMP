@@ -15,7 +15,7 @@ export const NAV: NavGroup[] = [
     { label: 'Registrations', href: '/enrolments' }, { label: 'Learning materials', href: '/learning' }, { label: 'Browse programmes', href: '/programmes' },
   ] },
   { label: 'Trainees', icon: 'users', roles: [...READERS, 'org_admin'], items: [
-    { label: 'All trainees', href: '/trainees' }, { label: 'Bulk import', href: '/trainees?import=1', roles: [...STAFF, 'org_admin'] },
+    { label: 'All trainees', href: '/trainees' }, { label: 'Bulk import', href: '/trainees?import=1', roles: [...STAFF, 'org_admin'] }, { label: 'Registration requests', href: '/registrations', roles: STAFF },
   ] },
   { label: 'Clients', icon: 'building', roles: [...READERS, 'finance_officer', 'org_admin'], href: '/clients' },
   { label: 'Instructors', icon: 'users', roles: READERS, href: '/instructors' },

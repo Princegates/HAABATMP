@@ -8,7 +8,10 @@ import { Actor, AuthUser } from '../common/auth.types';
 import { AuditService } from '../common/audit.service';
 import { CryptoService } from '../common/crypto.service';
 import { Db, Q } from '../common/db.service';
-import { ActorCtx, CurrentUser, Require } from '../common/decorators';
+import { ActorCtx, CurrentUser, Public, Require } from '../common/decorators';
+import { NotifyService } from '../common/notify.service';
+import { SettingsService } from '../common/settings.service';
+import { Throttle } from '@nestjs/throttler';
 import { CAN_CREATE_ROLES, ROLES, Role } from '../common/permissions';
 import { isStaff, seesAllClients } from '../common/scope';
 import { isoDate, pageQuery, parse, uuid } from '../common/validation';
@@ -68,6 +71,8 @@ export class UsersController {
     private readonly db: Db,
     private readonly audit: AuditService,
     private readonly crypto: CryptoService,
+    private readonly settings: SettingsService,
+    private readonly notify: NotifyService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -178,6 +183,93 @@ export class UsersController {
       if (d.role === 'instructor') await this.writeProfile(q, user.id, 'instructor', d.instructor_profile ?? {});
       await this.audit.log(q, actor, 'user.create', 'user', user.id, null, user);
       return user;
+    });
+  }
+
+  // ---------------------------------------------------------------- trainee registration requests
+
+  @Public()
+  @Get('registration/status')
+  async registrationStatus() {
+    const s = await this.settings.get<{ enabled: boolean; notice: string }>('registration');
+    return { enabled: s.enabled, notice: s.enabled ? s.notice : '' };
+  }
+
+  /** Public. Always answers the same way, so it cannot be used to find out who already has an account. */
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('registration')
+  async requestAccount(@Body() body: unknown, @ActorCtx() actor: Actor) {
+    const s = await this.settings.get<{ enabled: boolean }>('registration');
+    if (!s.enabled) throw new NotFoundException();
+    const d = parse(z.object({
+      email: z.string().trim().email().max(200), full_name: z.string().trim().min(2).max(200),
+      phone: z.string().trim().max(50).optional(), organisation: z.string().trim().max(200).optional(),
+      website: z.string().max(200).optional(), // hidden field; only automated form-fillers complete it
+    }), body);
+    const reply = { ok: true, message: 'Thank you. Your request has been received. If it is approved, you will get an email with a link to choose your password.' };
+    if (d.website) return reply;
+    if (await this.db.one('select 1 from users where lower(email) = lower($1)', [d.email])) return reply;
+    const pending = await this.db.one<{ n: number }>(`select count(*) n from registration_requests where status = 'pending'`);
+    if ((pending?.n ?? 0) >= 500) return reply; // never let the queue grow without bound
+    const row = await this.db.one<{ id: string }>(
+      `insert into registration_requests (email, full_name, phone, organisation_text) values ($1,$2,$3,$4)
+       on conflict (lower(email)) where status = 'pending' do nothing returning id`,
+      [d.email, d.full_name, d.phone ?? null, d.organisation ?? null]);
+    if (row) {
+      await this.audit.log(null, { ...actor, email: d.email }, 'registration.request', 'registration_request', row.id, null, { full_name: d.full_name, organisation: d.organisation ?? null });
+      const admins = await this.db.query<{ id: string }>(`select id from users where role in ('super_admin','training_admin') and status = 'active' limit 10`);
+      for (const a of admins) {
+        await this.notify.notify({ userId: a.id, kind: 'registration.request', subject: 'New trainee registration request',
+          body: `${d.full_name} (${d.email}) has asked for a trainee account. Review it under Trainees > Registration requests.`, dedupeKey: `registration:${row.id}:${a.id}` });
+      }
+    }
+    return reply;
+  }
+
+  @Get('registrations')
+  @Require('users:write')
+  async registrations(@CurrentUser() u: AuthUser, @Query() query: unknown) {
+    if (!isStaff(u)) throw new ForbiddenException();
+    const { status } = parse(z.object({ status: z.enum(['pending', 'approved', 'rejected']).default('pending') }), query);
+    const data = await this.db.query(
+      `select r.id, r.email, r.full_name, r.phone, r.organisation_text, r.status, r.reject_reason, r.created_at, r.decided_at, d.full_name as decided_by_name
+         from registration_requests r left join users d on d.id = r.decided_by where r.status = $1 order by r.created_at desc limit 200`, [status]);
+    return { data, total: data.length };
+  }
+
+  @Post('registrations/:id/approve')
+  @Require('users:write')
+  async approveRegistration(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
+    if (!isStaff(u)) throw new ForbiddenException();
+    parse(uuid, id);
+    const { organization_id } = parse(z.object({ organization_id: uuid.nullish() }), body);
+    if (organization_id) await this.assertOrgExists(organization_id);
+    return this.db.tx(async (q) => {
+      const r = await q.one<any>('select * from registration_requests where id = $1 for update', [id]);
+      if (!r) throw new NotFoundException();
+      if (r.status !== 'pending') throw new ConflictException('This request has already been decided');
+      const user = await this.insertUser(q, { email: r.email, full_name: r.full_name, phone: r.phone, role: 'trainee', organization_id: organization_id ?? null, created_by: u.id });
+      await q.query(`insert into trainee_profiles (user_id, employer) values ($1,$2) on conflict (user_id) do nothing`, [user.id, r.organisation_text]);
+      await q.query(`update registration_requests set status = 'approved', decided_by = $2, decided_at = now(), user_id = $3 where id = $1`, [id, u.id, user.id]);
+      await this.audit.log(q, actor, 'registration.approve', 'registration_request', id, { status: 'pending' }, { status: 'approved', user_id: user.id, organization_id: organization_id ?? null });
+      return user;
+    });
+  }
+
+  @Post('registrations/:id/reject')
+  @Require('users:write')
+  async rejectRegistration(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
+    if (!isStaff(u)) throw new ForbiddenException();
+    parse(uuid, id);
+    const { reason } = parse(z.object({ reason: z.string().trim().min(3).max(500) }), body);
+    return this.db.tx(async (q) => {
+      const r = await q.one<any>('select * from registration_requests where id = $1 for update', [id]);
+      if (!r) throw new NotFoundException();
+      if (r.status !== 'pending') throw new ConflictException('This request has already been decided');
+      await q.query(`update registration_requests set status = 'rejected', decided_by = $2, decided_at = now(), reject_reason = $3 where id = $1`, [id, u.id, reason]);
+      await this.audit.log(q, actor, 'registration.reject', 'registration_request', id, { status: 'pending' }, { status: 'rejected', reason });
+      return { ok: true };
     });
   }
 

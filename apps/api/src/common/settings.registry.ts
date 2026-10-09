@@ -52,6 +52,16 @@ export const SETTINGS_PAGES: PageDef[] = [
       help: 'Leave empty to make it optional for everyone. Otherwise list roles, for example super_admin, finance_officer. Those people are asked to set it up at their next sign-in.' }],
   },
   {
+    key: 'registration', title: 'Trainee Registration', status: 'active', writeRoles: SUPER,
+    description: 'Lets trainees request an account from the sign-in page. Off by default. Nobody gets in until a HAAB administrator approves the request; approval sends the invitation email.',
+    schema: z.object({ enabled: z.boolean(), notice: text(500) }),
+    defaults: { enabled: false, notice: '' },
+    fields: [
+      { name: 'enabled', label: 'Allow trainees to request an account', type: 'boolean' },
+      { name: 'notice', label: 'Message shown on the request form', type: 'textarea', help: 'Optional. For example: use your work email address.' },
+    ],
+  },
+  {
     key: 'period', title: 'Training Period', status: 'active', writeRoles: SUPER,
     description: 'When the reporting year starts. Dashboards and reports default to the current period.',
     schema: z.object({ start_month: z.number().int().min(1).max(12) }),
