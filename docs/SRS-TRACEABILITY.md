@@ -20,7 +20,7 @@ Key: **Done** = built and covered by the automated tests. **Partly** = built wit
 | 4.8 | Attendance (Present, Absent, Late, Excused), QR, location | **Partly** | Manual and rotating QR (30-second code, link-based). GPS position is recorded when a trainee allows it, but **location is not validated** against the venue. |
 | 4.9 | Assessments, question bank, configuration | **Done** | All seven question types, banks by course/topic/difficulty/type, duration, pass mark, shuffling of question order, attempts, automatic submission, result release. Answer **options** are not shuffled. |
 | 4.10 | Results and statuses | **Done** | Decided by a tested rule (attendance and every assessment). Two-person control on finalising and overriding. |
-| 4.11 | Certificates | **Partly** | Automatic generation, unique number in the SRS format, QR, template with signatory name/title and accent colour, PDF. **No handwritten-signature image**, and the logo prints only once the file is added (`LOGO_PATH`). |
+| 4.11 | Certificates | **Partly** | Automatic generation, unique number in the SRS format, QR, template with signatory name/title and accent colour, PDF. **No handwritten-signature image.** The HAAB logo prints on every certificate. |
 | 4.12 | Certificate verification | **Done** | Public page by unguessable token; Valid / Expiring soon / Expired / Revoked. |
 | 4.13 | Payments and billing | **Partly** | Invoices, partial payments, receipts, refunds, all six statuses, PDFs. **No online gateway** (Paystack/Hubtel/Flutterwave), by decision; payments are recorded by Finance. Credential slots exist for later. |
 | 4.14 | Notifications | **Partly** | In-app and email (queued, retried, not duplicated). Reminders for classes and certificate expiry. **SMS and WhatsApp not built.** Email wording is built in, not yet editable. |
@@ -65,8 +65,7 @@ Phase 1 is complete apart from the items marked Partly above. The corporate (cli
 - Day and night modes in HAAB's colours.
 
 ## Known limits and things to do before relying on it
-1. Add `haab-logo.png` (see docs/BRAND.md) and set `LOGO_PATH`.
-2. Test the Supabase invitation, reset and MFA flows on a staging project. They follow Supabase's documented API but could not be run here.
-3. Independent penetration test; Ghana Data Protection Act review (retention, erasure, hosting abroad).
-4. HAAB to replace the placeholder course values and confirm which authority recognises each course.
-5. Changing your own password while signed in, day/month calendar views, editable email templates, option shuffling, signature images, SCORM, SMS, WhatsApp, online payments and AI features are not built.
+1. Test the Supabase invitation, reset and MFA flows on a staging project. They follow Supabase's documented API but could not be run here.
+2. Independent penetration test; Ghana Data Protection Act review (retention, erasure, hosting abroad).
+3. HAAB to replace the placeholder course values and confirm which authority recognises each course.
+4. Changing your own password while signed in, day/month calendar views, editable email templates, option shuffling, signature images, SCORM, SMS, WhatsApp, online payments and AI features are not built.

@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import { z } from 'zod';
 
 const bool = z.enum(['true', 'false']).default('false').transform((v) => v === 'true');
@@ -36,8 +37,8 @@ const schema = z.object({
   RESEND_API_KEY: z.string().optional(),
   // Shared with the web app. Lets the web app tell the API the real client address (for rate limiting and the audit log).
   PROXY_SHARED_SECRET: z.string().min(24).optional(),
-  // Optional path to the HAAB logo (PNG) used on certificates and invoices.
-  LOGO_PATH: z.string().optional(),
+  // The HAAB logo (PNG) printed on certificates, invoices and receipts. Defaults to the one shipped with the web app.
+  LOGO_PATH: z.string().default(path.resolve(__dirname, '../../web/public/brand/haab-logo.png')),
   MAIL_FROM: z.string().default('HAAB Aviation Consultancy Services <training@localhost>'),
 });
 

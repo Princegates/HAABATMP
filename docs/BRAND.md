@@ -59,3 +59,12 @@ tables and forms. Headings use the serif; labels and buttons use the condensed u
 - The sidebar and top bar are dark in both themes, as on the website.
 - Gold used as TEXT on white uses `--accent-text` (#86683f) because the brand gold fails contrast on white.
 - Printed output (certificates, invoices, PDF reports) is always day mode on white.
+
+## Logo file (installed)
+`apps/web/public/brand/haab-logo.png` is the supplied navy logo, resized to 600px wide with stray near-transparent haze
+removed from the background (the artwork itself is untouched). The web app shows it white on dark areas with the same CSS
+filter the website uses. The API prints it in colour on certificates, invoices and receipts (`LOGO_PATH` can override).
+
+## Certificate layout
+
+The certificate PDF (`apps/api/src/common/certificate-pdf.ts`) is issued by **HAAB Aviation Consultancy Services Ltd.** (the legal name in System Setting → Organisation). Navy header band with the logo on white plates, issuer line, an optional "In partnership with" line (only when the programme is reserved for a client organisation), course banner, ticked list of the course modules, then date of issue, authorised signatory and certificate number with a verification QR. Fonts are Cormorant Garamond and Barlow, embedded from the `@fontsource` packages (WOFF; WOFF2 subsetting drops glyphs in pdfkit). If the packages are missing the renderer falls back to built-in PDF fonts.

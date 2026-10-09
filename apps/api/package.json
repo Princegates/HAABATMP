@@ -13,6 +13,8 @@
     "create-super-admin": "node dist/scripts/create-super-admin.js"
   },
   "dependencies": {
+    "@fontsource/barlow": "^5.3.0",
+    "@fontsource/cormorant-garamond": "^5.3.0",
     "@nestjs/common": "^11.2.7",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.2.7",

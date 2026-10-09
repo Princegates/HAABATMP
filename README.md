@@ -70,5 +70,5 @@ first super administrator.
 ## Known limits
 
 See the end of `docs/SRS-TRACEABILITY.md`. The important ones: Supabase sign-in and second-factor flows are written
-but have not been exercised against a live Supabase project; the HAAB logo file must be added; SCORM playback, SMS,
+but have not been exercised against a live Supabase project; SCORM playback, SMS,
 WhatsApp, online card payments and the AI features are not built.

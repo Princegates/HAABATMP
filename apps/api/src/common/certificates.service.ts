@@ -68,10 +68,14 @@ export class CertificatesService {
   async pdf(certificateId: string): Promise<{ file: Buffer; number: string }> {
     const c = await this.db.one<any>(
       `select c.*, t.full_name, co.title as course_title, co.code as course_code, co.duration_hours, p.start_date, p.end_date,
+              co.pass_mark, co.min_attendance_pct, k.name as category_name, p.code as programme_code, p.location, po.name as partner_name,
               tp.heading, tp.signatory_name, tp.signatory_title, tp.footer_text, tp.accent_color
          from certificates c join users t on t.id = c.trainee_id join courses co on co.id = c.course_id join programmes p on p.id = c.programme_id
+         join course_categories k on k.id = co.category_id
+         left join organizations po on po.id = p.organization_id
          left join certificate_templates tp on tp.id = c.template_id where c.id = $1`, [certificateId]);
     if (!c) throw new NotFoundException();
+    const mods = await this.db.query<{ title: string }>(`select title from course_modules where course_id = $1 order by position, created_at`, [c.course_id]);
     const org = await this.settings.get<{ name?: string }>('organization');
     const dates = c.start_date === c.end_date ? fmt(c.start_date) : `${fmt(c.start_date)} to ${fmt(c.end_date)}`;
     const file = await renderCertificate({
@@ -79,6 +83,9 @@ export class CertificatesService {
       trainingDates: dates, trainingHours: c.duration_hours, number: c.number, issuedAt: fmt(c.issued_at), expiresAt: c.expires_at ? fmt(c.expires_at) : null,
       signatoryName: c.signatory_name, signatoryTitle: c.signatory_title, footerText: c.footer_text, accent: c.accent_color ?? '#b8966e',
       issuer: org.name ?? 'HAAB Aviation Consultancy Services Ltd.', verifyUrl: `${this.env.PUBLIC_WEB_URL}/verify/${c.verification_token}`, logoPath: this.env.LOGO_PATH,
+      category: c.category_name, programmeCode: c.programme_code, location: c.location, partner: c.partner_name,
+      modules: mods.slice(0, 8).map((m) => m.title), moreModules: Math.max(0, mods.length - 8),
+      passMark: c.pass_mark, minAttendance: c.min_attendance_pct,
     });
     return { file, number: c.number };
   }

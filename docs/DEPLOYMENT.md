@@ -68,8 +68,8 @@ paste the key and sender, save, and press **Test connection**. Do the same for m
 
 ## 7. Branding
 
-Add the logo file as `apps/web/public/brand/haab-logo.png` (the same file the website uses) and set `LOGO_PATH` to
-`apps/web/public/brand/haab-logo.png` on the API so it is also printed on certificates, invoices and receipts.
+The HAAB logo is already in the repository (`apps/web/public/brand/haab-logo.png`). It shows in white on the dark sidebar and sign-in
+screen, and in navy on certificates, invoices and receipts, with no setting needed. To use a different file, replace that one.
 
 ## 8. Before you let anyone in
 

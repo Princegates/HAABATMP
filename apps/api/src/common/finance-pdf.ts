@@ -47,13 +47,13 @@ export async function renderInvoice(v: InvoiceView): Promise<Buffer> {
   y = Math.max(doc.y, y + 60) + 14;
 
   doc.rect(50, y, 495, 20).fill('#f1eee8');
-  doc.font('Helvetica-Bold').fontSize(8.5).fillColor(INK).text('DESCRIPTION', 58, y + 6).text('QTY', 360, y + 6, { width: 40, align: 'right' }).text('UNIT PRICE', 400, y + 6, { width: 70, align: 'right' }).text('AMOUNT', 470, y + 6, { width: 67, align: 'right' });
+  doc.font('Helvetica-Bold').fontSize(8.5).fillColor(INK).text('DESCRIPTION', 58, y + 6).text('QTY', 300, y + 6, { width: 40, align: 'right' }).text('UNIT PRICE', 345, y + 6, { width: 95, align: 'right' }).text('AMOUNT', 445, y + 6, { width: 92, align: 'right' });
   y += 26;
   doc.font('Helvetica').fontSize(10).fillColor(INK);
   for (const it of v.items) {
-    doc.text(it.description, 58, y, { width: 290 });
+    doc.text(it.description, 58, y, { width: 235 });
     const rowH = Math.max(doc.y - y, 14);
-    doc.text(String(it.quantity), 360, y, { width: 40, align: 'right' }).text(money(it.unit_price, v.currency), 400, y, { width: 70, align: 'right' }).text(money(it.quantity * it.unit_price, v.currency), 470, y, { width: 67, align: 'right' });
+    doc.text(String(it.quantity), 300, y, { width: 40, align: 'right' }).text(money(it.unit_price, v.currency), 345, y, { width: 95, align: 'right' }).text(money(it.quantity * it.unit_price, v.currency), 445, y, { width: 92, align: 'right' });
     y += rowH + 6;
     doc.moveTo(50, y - 2).lineTo(545, y - 2).lineWidth(0.4).strokeColor('#e3ded4').stroke();
   }
