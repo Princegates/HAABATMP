@@ -26,7 +26,7 @@ services:
     region: frankfurt
     plan: starter
     branch: claude/charming-dijkstra-6bb7fq   # staging deploys from this branch for now; change to `staging` or `main` later
-    buildCommand: npm ci && npm run build -w apps/api
+    buildCommand: npm ci --include=dev && npm run build -w apps/api
     startCommand: node apps/api/dist/main.js
     # Applies new database migrations before each release (paid plans). On a free plan run: npm run migrate
     preDeployCommand: node scripts/migrate.mjs
@@ -41,7 +41,7 @@ services:
     region: frankfurt
     plan: starter
     branch: claude/charming-dijkstra-6bb7fq   # staging deploys from this branch for now; change to `staging` or `main` later
-    buildCommand: npm ci && npm run build -w apps/web
+    buildCommand: npm ci --include=dev && npm run build -w apps/web
     startCommand: npm run start -w apps/web
     healthCheckPath: /login
     autoDeploy: true
@@ -59,7 +59,7 @@ services:
     plan: starter
     branch: claude/charming-dijkstra-6bb7fq   # staging deploys from this branch for now; change to `staging` or `main` later
     schedule: "*/15 * * * *"
-    buildCommand: npm ci && npm run build -w apps/api
+    buildCommand: npm ci --include=dev && npm run build -w apps/api
     startCommand: node apps/api/dist/scripts/jobs.js
     envVars:
       - fromGroup: haab-atmp-staging
