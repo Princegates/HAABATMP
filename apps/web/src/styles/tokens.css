@@ -1,0 +1,30 @@
+/* HAAB brand tokens. Change the brand here and nowhere else. See docs/BRAND.md. */
+:root {
+  --ink: #0c1013;
+  --ink-2: #11171e;
+  --slate: #1d272f;
+  --slate-line: #2a3640;
+
+  --gold: #b9966e;
+  --gold-hover: #a98558;
+  --gold-soft: #d0b898;
+  --gold-wash: #f4ede3;
+
+  --paper: #f6f4f0;
+  --card: #ffffff;
+  --text: #1a2026;
+  --text-muted: #5b6670;
+  --line: #e2ddd4;
+
+  --ok: #2f6b4f;
+  --warn: #9a6a12;
+  --danger: #9b2c2c;
+  --info: #2c5282;
+
+  --font-display: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --font-label: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif;
+  --font-body: 'Barlow', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --radius: 0;
+  --sidebar-w: 248px;
+}
