@@ -59,18 +59,10 @@ function LoginForm() {
           <path d="M30 640 C 220 380, 430 330, 720 110" /><path d="M30 700 C 240 470, 450 420, 740 190" opacity="0.5" />
           <circle cx="720" cy="110" r="4" fill="currentColor" stroke="none" />
         </svg>
-        <div className="hero-logo"><Logo height={72} /></div>
-        <div>
-          <div className="eyebrow">Training management platform</div>
-          <h1>Training records you can <em>stand behind</em></h1>
-          <p>Courses, attendance, assessments and certificates for HAAB Aviation Consultancy Services, kept in one controlled place and ready for any audit.</p>
-          <ul className="hero-points">
-            <li><b>Attendance</b><span>Rotating QR codes check trainees in on the day.</span></li>
-            <li><b>Assessments</b><span>Timed exams and marked results, with two-person control.</span></li>
-            <li><b>Certificates</b><span>Every certificate carries a code anyone can verify.</span></li>
-          </ul>
+        <div className="hero-center">
+          <Logo height={132} />
+          <div className="hero-foot">ICAO-aligned · Africa-focused · Future-ready</div>
         </div>
-        <div className="hero-foot">ICAO-aligned · Africa-focused · Future-ready</div>
       </aside>
       <main className="login-panel">
         <div className="login-form">

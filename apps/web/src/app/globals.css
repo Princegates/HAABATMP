@@ -219,7 +219,7 @@ input[disabled], select[disabled], textarea[disabled] { opacity: 0.6; }
 /* ---------------------------------------------------------------- login */
 .login { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); background: var(--bg); }
 .login-hero {
-  position: relative; overflow: hidden; padding: 56px clamp(40px, 6vw, 88px); display: flex; flex-direction: column; justify-content: space-between; gap: 48px; color: var(--brand-cream);
+  position: relative; overflow: hidden; padding: 56px clamp(40px, 6vw, 88px); display: flex; flex-direction: column; justify-content: center; align-items: center; color: var(--brand-cream);
   background:
     radial-gradient(900px 520px at 85% 100%, rgba(184, 150, 110, 0.16), transparent 62%),
     linear-gradient(180deg, #0c0f13 0%, #090b0e 100%);
@@ -227,7 +227,8 @@ input[disabled], select[disabled], textarea[disabled] { opacity: 0.6; }
 }
 .login-hero > * { position: relative; z-index: 1; }
 .hero-art { position: absolute !important; z-index: 0 !important; right: -140px; bottom: -160px; width: 760px; max-width: none; color: var(--brand-gold); opacity: 0.22; pointer-events: none; }
-.hero-logo { display: block; width: fit-content; }
+.hero-center { display: flex; flex-direction: column; align-items: center; gap: 28px; text-align: center; }
+.hero-center .brand-logo { align-self: center; }
 .login-hero .eyebrow { font-family: var(--font-label); font-weight: 600; letter-spacing: 0.3em; font-size: 12.5px; text-transform: uppercase; color: var(--brand-gold-2); display: flex; align-items: center; gap: 14px; }
 .login-hero .eyebrow::before { content: ''; width: 48px; height: 1px; background: var(--brand-gold); }
 .login-hero h1 { color: #fff; font-size: clamp(40px, 4.6vw, 64px); line-height: 1.04; margin: 22px 0 18px; max-width: 17ch; }
