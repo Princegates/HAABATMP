@@ -20,14 +20,14 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
             const href = hrefOf(p.key);
             const active = path === href;
             return (
-              <Link key={p.key} href={href} aria-current={active ? 'page' : undefined}
+              <Link key={p.key} href={href} scroll={false} aria-current={active ? 'page' : undefined}
                 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '10px 16px', borderLeft: `3px solid ${active ? 'var(--accent)' : 'transparent'}`, background: active ? 'var(--accent-wash)' : 'transparent', color: active ? 'var(--text)' : 'var(--text)', borderBottom: '1px solid var(--border)', textDecoration: 'none' }}>
                 <span>{p.title}</span>{p.status === 'planned' && <span className="badge neutral" style={{ fontSize: 10 }}>Planned</span>}
               </Link>
             );
           })}
         </nav>
-        <div style={{ minWidth: 0 }}>{children}</div>
+        <div style={{ minWidth: 0, minHeight: '70vh' }}>{children}</div>
       </div>
       <style>{`@media (max-width: 900px) { .settings-grid { grid-template-columns: 1fr !important; } .settings-grid nav { position: static !important; } }`}</style>
     </>
