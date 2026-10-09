@@ -278,6 +278,29 @@ export class UsersController {
     return { ok: true, note: this.env.AUTH_MODE === 'supabase' ? undefined : 'Development mode: nothing was sent.' };
   }
 
+  /** For a lost phone: removes the person's authenticator so they can sign in with a password and set it up again. */
+  @Post('users/:id/reset-mfa')
+  @Require('users:write')
+  async resetMfa(@CurrentUser() u: AuthUser, @Param('id') id: string, @ActorCtx() actor: Actor) {
+    parse(uuid, id);
+    const target = await this.load(u, id);
+    this.assertManageable(u, target);
+    if (id === u.id) throw new BadRequestException('Ask another administrator to reset your two-step sign-in');
+    if (this.env.AUTH_MODE === 'supabase' && target.auth_user_id) {
+      const base = `${this.env.SUPABASE_URL}/auth/v1/admin/users/${target.auth_user_id}/factors`;
+      const headers = { apikey: this.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${this.env.SUPABASE_SERVICE_ROLE_KEY}` };
+      const list = await fetch(base, { headers });
+      if (!list.ok) throw new BadRequestException('Could not read this person\'s authenticators');
+      for (const f of (await list.json()) as any[]) {
+        const r = await fetch(`${base}/${f.id}`, { method: 'DELETE', headers });
+        if (!r.ok) throw new BadRequestException('Could not remove the authenticator');
+      }
+    }
+    await this.db.query('update users set mfa_enrolled = false where id = $1', [id]);
+    await this.audit.log(null, actor, 'user.mfa_reset', 'user', id, null, { email: target.email });
+    return { ok: true };
+  }
+
   @Post('users/:id/reactivate')
   @Require('users:write')
   async reactivate(@CurrentUser() u: AuthUser, @Param('id') id: string, @ActorCtx() actor: Actor) {

@@ -6,6 +6,7 @@ export interface AuthUser {
   fullName: string;
   role: Role;
   organizationId: string | null;
+  mfaEnrolled: boolean; // the person has turned two-step sign-in on
   mfa: boolean; // true when the session was established with a second factor (aal2)
 }
 

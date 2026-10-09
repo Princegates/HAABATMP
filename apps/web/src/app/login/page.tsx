@@ -64,7 +64,7 @@ function LoginForm() {
           {stage.kind === 'password' ? (
             <form onSubmit={signIn} className="stack" noValidate>
               <div><h2>Welcome <span className="accent">back</span></h2><p className="muted">Use the email address HAAB registered for you. Accounts are created by an administrator.</p></div>
-              {params.get('step') === 'mfa' && <div className="alert info">Your role needs a second step. Sign in again to continue.</div>}
+              {params.get('step') === 'mfa' && <div className="alert info">A second step is needed for your account. Sign in again to continue.</div>}
               <div className="field"><label htmlFor="email">Email</label><input id="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></div>
               <div className="field"><label htmlFor="password">Password</label><input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
               {error && <div className="alert danger" role="alert">{error}</div>}

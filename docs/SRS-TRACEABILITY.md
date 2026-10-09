@@ -9,7 +9,7 @@ Key: **Done** = built and covered by the automated tests. **Partly** = built wit
 | SRS | Requirement | Status | Notes |
 |---|---|---|---|
 | 4.1 | Register, log in, reset/change password, profile | **Partly** | Accounts are **invited, not self-registered** (a deliberate change for a private system). Sign-in, session cookies, logout, set-password from an emailed link, forgotten-password request and admin-triggered reset are built. Supabase flows (invitation, reset, MFA) are written to Supabase's documented API but **not tested against a live project**. Changing your own password while signed in is not built yet (use the reset link). |
-| 4.1 | Email verification; optional MFA | **Done** (stronger) | Invitation confirms the address. MFA (authenticator app) is **mandatory** for super admin, training admin, finance and auditor, optional for others. |
+| 4.1 | Email verification; optional MFA | **Done** | Invitation confirms the address. Two-step sign-in (authenticator app) is **optional and off by default**. Anyone can turn it on from My profile, and the Super Admin can require it for chosen roles under Security Setting. Anyone who has turned it on must use it at every sign-in. |
 | 4.1 | Future SSO / Google / Microsoft | **Not built** | Listed under API & Integrations as planned. |
 | 4.2 | Trainee profiles, history, search, filter, update | **Done** | Includes bulk CSV import, duplicate-name warnings, ID numbers encrypted and masked, trainees grouped by organisation. |
 | 4.3 | Organisation profiles, contacts, employees, billing, dashboards | **Done** | Client isolation tested end to end. |
@@ -60,7 +60,7 @@ Phase 1 is complete apart from the items marked Partly above. The corporate (cli
 ## Decisions that differ from, or add to, the SRS
 - Private, invitation-only platform; no public registration; public certificate verification shows only validity.
 - Trainees belong to one client organisation or none; HAAB staff belong to HAAB only (enforced in the database).
-- Stronger controls than written: mandatory MFA for privileged roles, two-person control on results, tamper-evident audit log.
+- Stronger controls than written: two-person control on results, tamper-evident audit log.
 - Super administrators manage every outside credential in the application (encrypted, write-only, audited).
 - Day and night modes in HAAB's colours.
 

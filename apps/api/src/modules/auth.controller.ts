@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Inject, Post, Req, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { z } from 'zod';
@@ -6,6 +6,7 @@ import { ENV, Env } from '../config';
 import { Actor, AuthUser } from '../common/auth.types';
 import { AuditService } from '../common/audit.service';
 import { Db } from '../common/db.service';
+import { SettingsService } from '../common/settings.service';
 import { ActorCtx, AllowWithoutMfa, CurrentUser, Public } from '../common/decorators';
 import { PERMISSIONS } from '../common/permissions';
 import { TokenService } from '../common/token.service';
@@ -16,16 +17,13 @@ const loginSchema = z.object({ email: z.string().email().max(200), password: z.s
 
 @Controller('auth')
 export class AuthController {
-  private readonly mfaRoles: Set<string>;
-
   constructor(
     private readonly db: Db,
     private readonly tokens: TokenService,
     private readonly audit: AuditService,
+    private readonly settings: SettingsService,
     @Inject(ENV) private readonly env: Env,
-  ) {
-    this.mfaRoles = new Set(env.MFA_ROLES.split(',').map((s) => s.trim()).filter(Boolean));
-  }
+  ) {}
 
   @Public()
   @Throttle({ default: { limit: 8, ttl: 60_000 } })
@@ -60,14 +58,18 @@ export class AuthController {
     if (!user || user.status === 'suspended') return fail('not provisioned or suspended');
     await this.db.query(`update users set last_login_at = now(), status = case when status = 'invited' then 'active' else status end where id = $1`, [user.id]);
     await this.audit.log(null, { id: user.id, email: user.email, role: user.role, ip: actorBase.ip }, 'auth.login', 'user', user.id);
-    const needsMfa = this.mfaRoles.has(user.role);
+    const factors: any[] = session.user?.factors ?? [];
+    const verifiedFactor = factors.find((f: any) => f.status === 'verified');
+    // Required when the Super Admin's list names the role, or the person turned it on for themselves.
+    const enrolled = user.mfa_enrolled || Boolean(verifiedFactor);
+    const needsMfa = enrolled || (await this.settings.mfaRoles()).has(user.role);
     return {
       access_token: session.access_token,
       refresh_token: session.refresh_token,
       expires_in: session.expires_in,
       mfa_required: needsMfa && claims.aal !== 'aal2',
-      mfa_enrolled: (session.user?.factors ?? []).some((f: any) => f.status === 'verified'),
-      mfa_factor_id: (session.user?.factors ?? []).find((f: any) => f.status === 'verified')?.id ?? null,
+      mfa_enrolled: Boolean(verifiedFactor),
+      mfa_factor_id: verifiedFactor?.id ?? null,
     };
   }
 
@@ -145,8 +147,11 @@ export class AuthController {
       id: user.id, email: user.email, full_name: user.fullName, role: user.role,
       organization: org,
       permissions: [...PERMISSIONS[user.role]],
-      mfa_required: this.mfaRoles.has(user.role),
+      mfa_required: user.mfaEnrolled || (await this.settings.mfaRoles()).has(user.role),
+      mfa_required_by_policy: (await this.settings.mfaRoles()).has(user.role),
+      mfa_enrolled: user.mfaEnrolled,
       mfa_verified: user.mfa,
+      mfa_available: this.env.AUTH_MODE === 'supabase',
     };
   }
 
@@ -156,6 +161,8 @@ export class AuthController {
   @Post('mfa/enroll')
   async mfaEnroll(@Req() req: Request, @CurrentUser() user: AuthUser, @ActorCtx() actor: Actor) {
     this.requireSupabase();
+    // Someone who already has two-step sign-in must prove it before adding another device.
+    if (user.mfaEnrolled && !user.mfa) throw new ForbiddenException({ message: 'Two-step sign-in is required for your account', code: 'MFA_REQUIRED' });
     const res = await fetch(`${this.env.SUPABASE_URL}/auth/v1/factors`, {
       method: 'POST',
       headers: this.userHeaders(req),
@@ -186,8 +193,28 @@ export class AuthController {
       throw new UnauthorizedException('That code was not accepted');
     }
     const s: any = await vr.json();
+    await this.db.query('update users set mfa_enrolled = true where id = $1 and not mfa_enrolled', [user.id]);
     await this.audit.log(null, actor, 'auth.mfa_verified', 'user', user.id);
     return { access_token: s.access_token, refresh_token: s.refresh_token, expires_in: s.expires_in };
+  }
+
+  /** Turns two-step sign-in off for the signed-in person, unless the Super Admin requires it for their role. */
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('mfa/disable')
+  async mfaDisable(@Req() req: Request, @CurrentUser() user: AuthUser, @ActorCtx() actor: Actor) {
+    this.requireSupabase();
+    if ((await this.settings.mfaRoles()).has(user.role)) throw new BadRequestException('Your administrator requires two-step sign-in for your role');
+    const headers = this.userHeaders(req);
+    const me = await fetch(`${this.env.SUPABASE_URL}/auth/v1/user`, { headers });
+    if (!me.ok) throw new BadRequestException('Could not read your sign-in details');
+    const factors: any[] = ((await me.json()) as any).factors ?? [];
+    for (const f of factors) {
+      const r = await fetch(`${this.env.SUPABASE_URL}/auth/v1/factors/${f.id}`, { method: 'DELETE', headers });
+      if (!r.ok) throw new BadRequestException('Could not remove the authenticator');
+    }
+    await this.db.query('update users set mfa_enrolled = false where id = $1', [user.id]);
+    await this.audit.log(null, actor, 'auth.mfa_disabled', 'user', user.id);
+    return { ok: true };
   }
 
   @Post('logout')

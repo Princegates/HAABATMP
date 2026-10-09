@@ -46,6 +46,7 @@ export default function UsersPage() {
           <span className="row" style={{ justifyContent: 'flex-end' }}>
             <button className="btn outline sm" onClick={() => setForm(u)}>Edit</button>
             {u.status !== 'suspended' && <button className="btn ghost sm" onClick={async () => { try { const r = await api.post(`/users/${u.id}/send-reset`); toast(r.note ?? 'Password reset link sent'); } catch (e) { toast((e as ApiError).message, 'error'); } }}>Reset password</button>}
+            {u.id !== me.id && u.status !== 'suspended' && <button className="btn ghost sm" title="Use when the person has lost their phone" onClick={async () => { try { await api.post(`/users/${u.id}/reset-mfa`); toast('Two-step sign-in reset'); } catch (e) { toast((e as ApiError).message, 'error'); } }}>Reset two-step</button>}
             {u.id !== me.id && (u.status === 'suspended' ? <button className="btn outline sm" onClick={async () => { await api.post(`/users/${u.id}/reactivate`); toast('Account reactivated'); setTick((t) => t + 1); }}>Reactivate</button> : <button className="btn danger sm" onClick={() => setSuspend(u)}>Suspend</button>)}
           </span>
         )} />

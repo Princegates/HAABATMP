@@ -587,3 +587,21 @@ test('16. the rate limiter really limits sign-in attempts', async () => {
   } finally { process.env.THROTTLE_DISABLED = 'true';
 process.env.PROXY_SHARED_SECRET = 'test-proxy-secret-0123456789abcdef'; }
 });
+
+test('17. two-step sign-in is optional by default and the Super Admin can require it for chosen roles', async () => {
+  const sa = api(S.sa);
+  const fin = api(S.tok_fin);
+  const before = ok(await fin.get('/auth/me'));
+  assert.equal(before.mfa_required, false, 'off by default');
+  assert.equal(before.mfa_required_by_policy, false);
+  refused(await fin.put('/settings/pages/security', { mfa_required_roles: ['finance_officer'] }), [403, 404], 'only the Super Admin sets the policy');
+  refused(await sa.put('/settings/pages/security', { mfa_required_roles: ['nonsense'] }), 400, 'unknown roles are rejected');
+  ok(await sa.put('/settings/pages/security', { mfa_required_roles: ['finance_officer'] }));
+  try {
+    const after = ok(await fin.get('/auth/me'));
+    assert.equal(after.mfa_required_by_policy, true);
+    assert.equal(ok(await api(S.tok_a1).get('/auth/me')).mfa_required_by_policy, false, 'other roles are unaffected');
+    refused(await fin.post('/auth/mfa/disable'), 400, 'cannot be switched off where required');
+  } finally { ok(await sa.put('/settings/pages/security', { mfa_required_roles: [] })); }
+  assert.equal(ok(await fin.get('/auth/me')).mfa_required, false, 'back to optional');
+});

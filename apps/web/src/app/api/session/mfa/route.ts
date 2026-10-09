@@ -10,7 +10,8 @@ export async function POST(req: NextRequest) {
   if (!token) return NextResponse.json({ message: 'Sign in required' }, { status: 401 });
   const input = await req.json().catch(() => ({}));
   const verify = input.action === 'verify';
-  const res = await fetch(`${API_URL}/auth/mfa/${verify ? 'verify' : 'enroll'}`, {
+  const action = verify ? 'verify' : input.action === 'disable' ? 'disable' : 'enroll';
+  const res = await fetch(`${API_URL}/auth/mfa/${action}`, {
     method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, ...clientHeaders(req) },
     body: JSON.stringify(verify ? { factor_id: input.factor_id, code: input.code } : {}),
   });

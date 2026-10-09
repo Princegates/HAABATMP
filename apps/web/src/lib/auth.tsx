@@ -5,7 +5,7 @@ import { api, ApiError } from './api';
 
 export interface Me {
   id: string; email: string; full_name: string; role: Role; organization: { id: string; name: string } | null;
-  permissions: string[]; mfa_required: boolean; mfa_verified: boolean;
+  permissions: string[]; mfa_required: boolean; mfa_required_by_policy: boolean; mfa_enrolled: boolean; mfa_verified: boolean; mfa_available: boolean;
 }
 export type Role = 'super_admin' | 'training_admin' | 'instructor' | 'trainee' | 'org_admin' | 'finance_officer' | 'auditor';
 

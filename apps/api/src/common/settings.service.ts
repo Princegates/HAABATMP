@@ -25,6 +25,17 @@ export class SettingsService {
     return { ...(PAGE_BY_KEY.get(key)?.defaults ?? {}), ...((row?.value as object) ?? {}) } as T;
   }
 
+  private mfaCache: { at: number; roles: Set<string> } | null = null;
+
+  /** Roles that must use two-step sign-in. Cached for a few seconds because the guard asks on every request. */
+  async mfaRoles(): Promise<Set<string>> {
+    if (this.mfaCache && Date.now() - this.mfaCache.at < 5000) return this.mfaCache.roles;
+    const s = await this.get<{ mfa_required_roles: string[] }>('security');
+    this.mfaCache = { at: Date.now(), roles: new Set(s.mfa_required_roles ?? []) };
+    return this.mfaCache.roles;
+  }
+  forgetMfaRoles() { this.mfaCache = null; }
+
   training(q?: Q) { return this.get<TrainingSettings>('training', q); }
   finance(q?: Q) { return this.get<FinanceSettings>('finance', q); }
 }

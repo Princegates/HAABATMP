@@ -41,7 +41,7 @@ function HostStatus({ status, error }: { status?: Status; error?: { message: str
         {row('Sign-in', <><Badge tone={status.authentication.mode === 'supabase' ? 'ok' : 'warn'}>{status.authentication.mode === 'supabase' ? 'Supabase Auth' : 'Development mode'}</Badge> <span className="muted">{status.authentication.provider_host}</span></>, status.authentication.mode === 'dev' ? 'Development sign-in must never be used in production.' : status.authentication.note)}
         {row('Encryption key', <Badge tone={status.encryption.master_key_set ? 'ok' : 'warn'}>{status.encryption.master_key_set ? 'Set' : 'Using development key'}</Badge>, status.encryption.note)}
         {row('File storage', <Badge tone={status.storage.driver === 'supabase' ? 'ok' : 'warn'}>{status.storage.driver}</Badge>, status.storage.bucket ?? 'Local disk is lost on redeploy. Use Supabase storage in production.')}
-        {row('Second factor', status.mfa_required_for.map((r) => r.replace('_', ' ')).join(', '), 'Roles that must use an authenticator app.')}
+        {row('Second factor', status.mfa_required_for.length ? status.mfa_required_for.map((r) => r.replace('_', ' ')).join(', ') : 'Optional for everyone', 'Roles that must use an authenticator app. Change it under Security Setting.')}
         {row('Environment', status.environment)}
       </tbody></table>
     </>

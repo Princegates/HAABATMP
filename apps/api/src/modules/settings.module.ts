@@ -66,6 +66,7 @@ export class SettingsController {
         `insert into settings (key, value, updated_by) values ($1,$2,$3) on conflict (key) do update set value = excluded.value, updated_by = excluded.updated_by, updated_at = now()`,
         [key, JSON.stringify(after), u.id]);
       await this.audit.log(q, actor, 'settings.update', 'settings', key, before, after);
+      if (key === 'security') this.settings.forgetMfaRoles();
       return after;
     });
   }
@@ -88,7 +89,7 @@ export class SettingsController {
       authentication: { mode: this.env.AUTH_MODE, provider_host: host(this.env.SUPABASE_URL), anon_key_set: Boolean(this.env.SUPABASE_ANON_KEY), service_key_set: Boolean(this.env.SUPABASE_SERVICE_ROLE_KEY), note: 'Needed to sign anyone in, so set by the host.' },
       encryption: { master_key_set: Boolean(this.env.DATA_ENCRYPTION_KEY), note: 'Protects stored credentials and ID numbers. Held by the host and never shown.' },
       storage: { driver: this.env.STORAGE_DRIVER, bucket: this.env.STORAGE_DRIVER === 'supabase' ? this.env.SUPABASE_STORAGE_BUCKET : null },
-      mfa_required_for: this.env.MFA_ROLES.split(',').map((s) => s.trim()).filter(Boolean),
+      mfa_required_for: [...(await this.settings.mfaRoles())],
     };
   }
 }

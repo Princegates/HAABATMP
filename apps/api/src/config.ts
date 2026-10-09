@@ -22,7 +22,6 @@ const schema = z.object({
   SUPABASE_ANON_KEY: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   SUPABASE_JWT_SECRET: z.string().optional(),
-  MFA_ROLES: z.string().default('super_admin,training_admin,finance_officer,auditor'),
 
   // 32 bytes, base64. Encrypts identity numbers at rest.
   DATA_ENCRYPTION_KEY: z.string().optional(),

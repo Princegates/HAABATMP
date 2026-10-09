@@ -7,7 +7,7 @@ Work through this in order. Each step says how to check it worked.
 1. Create a project. Choose the region closest to your users that your data-protection advice allows.
 2. **Authentication > Sign In / Providers**: switch **"Allow new users to sign up" OFF**. This matters. People are only
    ever invited from inside the platform.
-3. **Authentication > Multi-Factor**: enable TOTP.
+3. **Authentication > Multi-Factor**: enable TOTP. This only makes it available; nobody is forced to use it unless the Super Admin requires it for a role.
 4. **Authentication > URL Configuration**: set **Site URL** to the platform's address (for example `https://training.yourdomain.com`) and add
    `https://training.yourdomain.com/set-password` under **Redirect URLs**. Invitation and password-reset links open that page.
    Leave the default email templates for now; you can brand them later.
@@ -57,7 +57,7 @@ Nobody can sign up and nobody exists yet to invite you, so run this once from th
 npm run create-super-admin -w apps/api -- you@yourdomain.com "Your Name"
 ```
 
-An invitation email arrives. The link opens the set-password page; choose a password, sign in, and enrol an authenticator app when asked. The command refuses to
+An invitation email arrives. The link opens the set-password page; choose a password, and sign in. Two-step sign-in is optional and off by default: turn it on yourself under **My profile**, or require it for chosen roles under **System setting > Security Setting**. The command refuses to
 run again once a super administrator exists.
 
 ## 6. Email
@@ -73,7 +73,7 @@ screen, and in navy on certificates, invoices and receipts, with no setting need
 
 ## 8. Before you let anyone in
 
-- [ ] Sign in as the super administrator and confirm the second step works.
+- [ ] Sign in as the super administrator and confirm two-step sign-in works: turn it on under My profile, sign out and in again, then turn it off.
 - [ ] **System setting > General Setting**: organisation name, address, registration number.
 - [ ] **Currency**, **Payment Methods** (bank and mobile money details printed on invoices), **Training Rules**.
 - [ ] Activate real courses with their true duration, fee, validity and approving body. The seeded courses are drafts with placeholders.
@@ -89,4 +89,4 @@ screen, and in navy on certificates, invoices and receipts, with no setting need
 - **Releases**: merge to `main`. Test on the staging blueprint first (`render.staging.yaml`, separate Supabase project).
 - **Housekeeping** runs every 15 minutes as a cron job. If it stops, emails stop and exams that timed out stay open until the trainee returns.
 - **Logs** are in Render. Add Sentry or similar for error alerts.
-- **Lost authenticator device**: a super administrator removes the factor in the Supabase dashboard; the person enrols again at next sign-in.
+- **Lost authenticator device**: another administrator presses **Reset two-step** on the person in System setting > Users. They then sign in with their password and set it up again. (If the only super administrator loses their phone, remove the factor in the Supabase dashboard and run `update users set mfa_enrolled = false where email = '...';`.)

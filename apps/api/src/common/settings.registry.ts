@@ -44,6 +44,14 @@ export const SETTINGS_PAGES: PageDef[] = [
     ],
   },
   {
+    key: 'security', title: 'Security Setting', status: 'active', writeRoles: SUPER,
+    description: 'Two-step sign-in with an authenticator app. Off by default. Anyone can still turn it on for their own account from My profile.',
+    schema: z.object({ mfa_required_roles: z.array(z.enum(['super_admin', 'training_admin', 'instructor', 'trainee', 'org_admin', 'finance_officer', 'auditor'])).max(7) }),
+    defaults: { mfa_required_roles: [] },
+    fields: [{ name: 'mfa_required_roles', label: 'Roles that must use two-step sign-in', type: 'tags',
+      help: 'Leave empty to make it optional for everyone. Otherwise list roles, for example super_admin, finance_officer. Those people are asked to set it up at their next sign-in.' }],
+  },
+  {
     key: 'period', title: 'Training Period', status: 'active', writeRoles: SUPER,
     description: 'When the reporting year starts. Dashboards and reports default to the current period.',
     schema: z.object({ start_month: z.number().int().min(1).max(12) }),
@@ -182,7 +190,7 @@ export const SETTINGS_PAGES: PageDef[] = [
   },
   {
     key: 'captcha', title: 'Captcha Setting', status: 'planned', writeRoles: SUPER,
-    description: 'Planned. Sign-in is protected by rate limiting and mandatory MFA for privileged roles in the meantime.',
+    description: 'Planned. Sign-in is protected by rate limiting in the meantime.',
     schema: z.object({ enabled: z.literal(false) }), defaults: { enabled: false }, fields: [],
   },
 ];
