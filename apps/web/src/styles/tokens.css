@@ -108,3 +108,19 @@
     color-scheme: dark;
   }
 }
+
+/* categorical chart palette, checked against both work areas */
+:root, :root[data-theme='day'] {
+  --c1: #b8966e; --c2: #4a6f8f; --c3: #4f8a7a; --c4: #a8603f; --c5: #7d6a96; --c6: #7f9358; --c7: #8a8f98; --c8: #c9a24a;
+  --grid: #e3ded4;
+}
+:root[data-theme='night'] {
+  --c1: #d4b896; --c2: #7ea6cc; --c3: #6fb5a2; --c4: #d58a66; --c5: #a994c4; --c6: #a7bd7f; --c7: #9ea8b4; --c8: #e0bd6a;
+  --grid: rgba(184, 150, 110, 0.14);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --c1: #d4b896; --c2: #7ea6cc; --c3: #6fb5a2; --c4: #d58a66; --c5: #a994c4; --c6: #a7bd7f; --c7: #9ea8b4; --c8: #e0bd6a;
+    --grid: rgba(184, 150, 110, 0.14);
+  }
+}
