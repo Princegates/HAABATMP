@@ -260,6 +260,24 @@ export class UsersController {
     return this.setStatus(id, 'suspended', target, actor, 'user.suspend', reason);
   }
 
+  /** Emails the person a link to choose a new password. Nothing about their old password is revealed or changed. */
+  @Post('users/:id/send-reset')
+  @Require('users:write')
+  async sendReset(@CurrentUser() u: AuthUser, @Param('id') id: string, @ActorCtx() actor: Actor) {
+    parse(uuid, id);
+    const target = await this.load(u, id);
+    this.assertManageable(u, target);
+    if (target.status === 'suspended') throw new BadRequestException('This account is suspended');
+    if (this.env.AUTH_MODE === 'supabase') {
+      const res = await fetch(`${this.env.SUPABASE_URL}/auth/v1/recover?redirect_to=${encodeURIComponent(`${this.env.PUBLIC_WEB_URL}/set-password`)}`, {
+        method: 'POST', headers: { apikey: this.env.SUPABASE_ANON_KEY!, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: target.email }),
+      });
+      if (!res.ok) throw new BadRequestException('The reset email could not be sent');
+    }
+    await this.audit.log(null, actor, 'user.password_reset_sent', 'user', id, null, { email: target.email });
+    return { ok: true, note: this.env.AUTH_MODE === 'supabase' ? undefined : 'Development mode: nothing was sent.' };
+  }
+
   @Post('users/:id/reactivate')
   @Require('users:write')
   async reactivate(@CurrentUser() u: AuthUser, @Param('id') id: string, @ActorCtx() actor: Actor) {
@@ -307,7 +325,7 @@ export class UsersController {
     let authUserId: string | null = null;
     if (this.env.AUTH_MODE === 'supabase') {
       // Invite-only: the identity provider emails the invitation. There is no public sign-up.
-      const res = await fetch(`${this.env.SUPABASE_URL}/auth/v1/invite`, {
+      const res = await fetch(`${this.env.SUPABASE_URL}/auth/v1/invite?redirect_to=${encodeURIComponent(`${this.env.PUBLIC_WEB_URL}/set-password`)}`, {
         method: 'POST',
         headers: { apikey: this.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${this.env.SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: d.email }),

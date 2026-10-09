@@ -17,6 +17,8 @@ function LoginForm() {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [forgot, setForgot] = useState(false);
+  const [forgotDone, setForgotDone] = useState(false);
 
   async function post(url: string, body: unknown) {
     const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' });
@@ -67,7 +69,13 @@ function LoginForm() {
               <div className="field"><label htmlFor="password">Password</label><input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
               {error && <div className="alert danger" role="alert">{error}</div>}
               <button className="btn" disabled={busy || !email || !password}>{busy ? 'Signing in…' : 'Sign in'}</button>
-              <p className="muted" style={{ fontSize: 13 }}>Forgotten your password? Ask your administrator to send a reset.</p>
+              {forgot ? (
+                <div className="stack tight" style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                  {forgotDone ? <div className="alert ok" role="status">If that address is registered, a link to set a new password is on its way. It can take a few minutes.</div> : <>
+                    <p className="muted" style={{ fontSize: 13.5 }}>Enter your email address and we will send a link to choose a new password.</p>
+                    <button type="button" className="btn outline" disabled={busy || !email} onClick={async () => { setBusy(true); try { await post('/api/auth/forgot', { email }); } catch { /* the answer is the same either way */ } setForgotDone(true); setBusy(false); }}>Send me a link</button></>}
+                </div>
+              ) : <button type="button" className="btn ghost" style={{ alignSelf: 'flex-start', paddingInline: 0, textTransform: 'none', letterSpacing: 0, fontFamily: 'var(--font-body)', fontWeight: 400, fontSize: 14 }} onClick={() => setForgot(true)}>Forgotten your password?</button>}
             </form>
           ) : (
             <form onSubmit={verify} className="stack" noValidate>

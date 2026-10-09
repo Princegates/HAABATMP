@@ -56,10 +56,9 @@ export class AuthController {
     if (!res.ok) return fail('rejected by identity provider');
     const session: any = await res.json();
     const claims = await this.tokens.verify(session.access_token);
-    const user = await this.db.one<any>(
-      `select * from users where auth_user_id = $1 or (auth_user_id is null and lower(email) = lower($2))`, [claims.sub, email]);
+    const user = await this.db.one<any>('select * from users where auth_user_id = $1', [claims.sub]);
     if (!user || user.status === 'suspended') return fail('not provisioned or suspended');
-    await this.db.query('update users set last_login_at = now() where id = $1', [user.id]);
+    await this.db.query(`update users set last_login_at = now(), status = case when status = 'invited' then 'active' else status end where id = $1`, [user.id]);
     await this.audit.log(null, { id: user.id, email: user.email, role: user.role, ip: actorBase.ip }, 'auth.login', 'user', user.id);
     const needsMfa = this.mfaRoles.has(user.role);
     return {
@@ -86,6 +85,54 @@ export class AuthController {
     if (!res.ok) throw new UnauthorizedException('Session expired, please sign in again');
     const s: any = await res.json();
     return { access_token: s.access_token, refresh_token: s.refresh_token, expires_in: s.expires_in };
+  }
+
+  /**
+   * "Forgotten password". Always answers the same way, whether or not the address is registered, so it cannot be
+   * used to find out who has an account.
+   */
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('forgot')
+  async forgot(@Body() body: unknown, @ActorCtx() actor: Actor) {
+    const { email } = parse(z.object({ email: z.string().email().max(200) }), body);
+    if (this.env.AUTH_MODE === 'supabase') {
+      const user = await this.db.one<any>(`select id from users where lower(email) = lower($1) and status <> 'suspended' and auth_user_id is not null`, [email]);
+      if (user) {
+        await this.sendRecovery(email);
+        await this.audit.log(null, { ...actor, email }, 'auth.password_reset_requested', 'user', user.id);
+      }
+    }
+    return { ok: true, message: 'If that address is registered, a link to set a new password is on its way.' };
+  }
+
+  /** Lets a person choose a password from the emailed invitation or reset link. The link's own token authorises it. */
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('set-password')
+  async setPassword(@Body() body: unknown, @ActorCtx() actor: Actor) {
+    if (this.env.AUTH_MODE !== 'supabase') throw new BadRequestException('Passwords are managed by the identity provider. This is not available in development mode.');
+    const { access_token, password } = parse(z.object({ access_token: z.string().min(20).max(4000), password: z.string().min(12, 'Use at least 12 characters').max(200) }), body);
+    if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) throw new BadRequestException('Use letters and at least one number');
+    const claims = await this.tokens.verify(access_token);
+    const user = await this.db.one<any>('select id, email, role, status from users where auth_user_id = $1', [claims.sub]);
+    if (!user || user.status === 'suspended') throw new UnauthorizedException('This link is not valid');
+    const res = await fetch(`${this.env.SUPABASE_URL}/auth/v1/user`, {
+      method: 'PUT', headers: { apikey: this.env.SUPABASE_ANON_KEY!, Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ password }),
+    });
+    if (!res.ok) {
+      const detail: any = await res.json().catch(() => ({}));
+      throw new BadRequestException(detail?.msg ?? detail?.message ?? 'The password could not be set. The link may have expired. Ask for a new one.');
+    }
+    await this.audit.log(null, { id: user.id, email: user.email, role: user.role, ip: actor.ip }, 'auth.password_set', 'user', user.id);
+    return { ok: true };
+  }
+
+  /** Used by the admin "send password reset" action. */
+  async sendRecovery(email: string) {
+    await fetch(`${this.env.SUPABASE_URL}/auth/v1/recover?redirect_to=${encodeURIComponent(`${this.env.PUBLIC_WEB_URL}/set-password`)}`, {
+      method: 'POST', headers: { apikey: this.env.SUPABASE_ANON_KEY!, 'Content-Type': 'application/json' }, body: JSON.stringify({ email }),
+    }).catch(() => undefined);
   }
 
   @AllowWithoutMfa()

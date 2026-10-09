@@ -31,3 +31,16 @@ export function sameOrigin(req: Request): boolean {
   if (!origin) return true;
   try { return new URL(origin).host === req.headers.get('host'); } catch { return false; }
 }
+
+/**
+ * Headers that tell the API who the real client is. The shared secret proves the message comes from this app,
+ * so the API can trust the address. Behind Cloudflare the real address is in cf-connecting-ip; otherwise the last
+ * entry added by the hosting proxy is used (the leftmost can be forged by the visitor).
+ */
+export function clientHeaders(req: Request): Record<string, string> {
+  const secret = process.env.PROXY_SHARED_SECRET;
+  if (!secret) return {};
+  const xff = (req.headers.get('x-forwarded-for') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  const ip = req.headers.get('cf-connecting-ip') ?? xff[xff.length - 1] ?? req.headers.get('x-real-ip');
+  return ip ? { 'x-atmp-client-ip': ip, 'x-atmp-proxy-key': secret } : {};
+}

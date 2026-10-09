@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { accessToken, API_URL, refreshToken, sameOrigin, setSession } from '@/lib/server';
+import { accessToken, API_URL, clientHeaders, refreshToken, sameOrigin, setSession } from '@/lib/server';
 
 export const dynamic = 'force-dynamic';
 
 async function forward(req: NextRequest, path: string[], token?: string) {
   const url = `${API_URL}/${path.map(encodeURIComponent).join('/')}${req.nextUrl.search}`;
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...clientHeaders(req) };
   const type = req.headers.get('content-type');
   if (type) headers['content-type'] = type;
   if (token) headers.authorization = `Bearer ${token}`;
@@ -26,7 +26,7 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
   if (res.status === 401 && token) {
     const rt = await refreshToken();
     if (rt) {
-      const r = await fetch(`${API_URL}/auth/refresh`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ refresh_token: rt }) });
+      const r = await fetch(`${API_URL}/auth/refresh`, { method: 'POST', headers: { 'content-type': 'application/json', ...clientHeaders(req) }, body: JSON.stringify({ refresh_token: rt }) });
       if (r.ok) { renewed = await r.json(); res = await forward(req, path, renewed!.access_token); }
     }
   }

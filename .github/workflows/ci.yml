@@ -1,0 +1,40 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: atmp
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/atmp
+      AUTH_MODE: dev
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck -w apps/api && npm run typecheck -w apps/web
+      - name: Apply database migrations
+        run: node scripts/migrate.mjs
+      - name: API unit and end-to-end tests
+        run: npm test -w apps/api
+      - name: Build web app
+        run: npm run build -w apps/web
+        env:
+          NODE_ENV: production
+      - name: Dependency audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high

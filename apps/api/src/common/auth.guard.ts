@@ -61,15 +61,9 @@ export class AuthGuard implements CanActivate {
     if (this.env.AUTH_MODE === 'dev') {
       user = await this.db.one<UserRow>('select * from users where id = $1', [sub]);
     } else {
+      // Matched by the identity id stored when the invitation was sent. Never by email address: anyone can type an
+      // email into a sign-up form, so an email match would let them take over an invited person's profile.
       user = await this.db.one<UserRow>('select * from users where auth_user_id = $1', [sub]);
-      if (!user && email) {
-        // First sign-in after an invitation: link the auth identity to the invited profile.
-        user = await this.db.one<UserRow>(
-          `update users set auth_user_id = $1, status = case when status = 'invited' then 'active' else status end
-            where lower(email) = lower($2) and auth_user_id is null returning *`,
-          [sub, email],
-        );
-      }
     }
     if (!user) throw new ForbiddenException('This account has not been provisioned. Contact your administrator.');
     if (user.status === 'suspended') throw new ForbiddenException('This account is suspended');

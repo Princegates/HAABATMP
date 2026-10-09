@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useAuth, ROLE_LABEL, Role } from '@/lib/auth';
 import { Column, DataList } from '@/components/datalist';
 import { FieldDef, FormModal } from '@/components/form';
@@ -45,6 +45,7 @@ export default function UsersPage() {
         actions={(u) => can('users:write') && (
           <span className="row" style={{ justifyContent: 'flex-end' }}>
             <button className="btn outline sm" onClick={() => setForm(u)}>Edit</button>
+            {u.status !== 'suspended' && <button className="btn ghost sm" onClick={async () => { try { const r = await api.post(`/users/${u.id}/send-reset`); toast(r.note ?? 'Password reset link sent'); } catch (e) { toast((e as ApiError).message, 'error'); } }}>Reset password</button>}
             {u.id !== me.id && (u.status === 'suspended' ? <button className="btn outline sm" onClick={async () => { await api.post(`/users/${u.id}/reactivate`); toast('Account reactivated'); setTick((t) => t + 1); }}>Reactivate</button> : <button className="btn danger sm" onClick={() => setSuspend(u)}>Suspend</button>)}
           </span>
         )} />

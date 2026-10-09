@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { accessToken, API_URL, sameOrigin, setSession } from '@/lib/server';
+import { accessToken, API_URL, clientHeaders, sameOrigin, setSession } from '@/lib/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
   const input = await req.json().catch(() => ({}));
   const verify = input.action === 'verify';
   const res = await fetch(`${API_URL}/auth/mfa/${verify ? 'verify' : 'enroll'}`, {
-    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, ...clientHeaders(req) },
     body: JSON.stringify(verify ? { factor_id: input.factor_id, code: input.code } : {}),
   });
   const body = await res.json().catch(() => ({}));

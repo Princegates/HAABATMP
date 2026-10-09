@@ -1,7 +1,7 @@
 'use client';
 import { use, useState } from 'react';
 import Link from 'next/link';
-import { api, download, useApi } from '@/lib/api';
+import { api, ApiError, download, useApi } from '@/lib/api';
 import { ROLE_LABEL, Role, useAuth } from '@/lib/auth';
 import { Column, DataList } from '@/components/datalist';
 import { FieldDef, FormModal } from '@/components/form';
@@ -45,6 +45,7 @@ export default function PersonPage({ params }: { params: Promise<{ id: string }>
         subtitle={<>{ROLE_LABEL[u.role as Role]} · {u.organization_name ?? 'Individual'} · <Badge value={u.status} /></>}
         actions={can('users:write') && staff || (is('org_admin') && isTrainee) ? <>
           {fields.length > 0 && <button className="btn outline" onClick={() => setEdit(true)}>Edit profile</button>}
+          {u.id !== me.id && u.status !== 'suspended' && <button className="btn outline" onClick={async () => { try { const r = await api.post(`/users/${id}/send-reset`); toast(r.note ?? 'A password reset link has been emailed'); } catch (e) { toast((e as ApiError).message, 'error'); } }}>Send password reset</button>}
           {u.id !== me.id && (u.status === 'suspended' ? <button className="btn outline" onClick={async () => { await api.post(`/users/${id}/reactivate`); toast('Reactivated'); user.reload(); }}>Reactivate</button> : <button className="btn danger" onClick={() => setSuspend(true)}>Suspend</button>)}
         </> : undefined} />
       <div className="stack" style={{ gap: 20 }}>

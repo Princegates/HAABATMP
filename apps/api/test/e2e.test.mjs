@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process';
 if (!process.env.DATABASE_URL) { console.log('DATABASE_URL not set: skipping e2e'); process.exit(0); }
 process.env.AUTH_MODE ??= 'dev';
 process.env.THROTTLE_DISABLED = 'true';
+process.env.PROXY_SHARED_SECRET = 'test-proxy-secret-0123456789abcdef';
 const { createApp } = await import('../dist/main.js');
 
 const PASSWORD = process.env.DEV_PASSWORD ?? 'ChangeMe!2026';
@@ -543,6 +544,29 @@ test('14. authentication hardening', async () => {
   assert.equal((await res.json()).status, 'ok');
 });
 
+test('14b. password reset never reveals who has an account, and is controlled', async () => {
+  const known = await http('POST', '/auth/forgot', null, { email: email('super') });
+  const unknown = await http('POST', '/auth/forgot', null, { email: 'nobody.here@example.com' });
+  assert.equal(known.status, 201); assert.deepEqual(known.body, unknown.body, 'the answer is identical for registered and unregistered addresses');
+  refused(await http('POST', '/auth/set-password', null, { access_token: 'x'.repeat(40), password: 'A-long-password-123' }), 400, 'not available without the identity provider');
+  ok(await api(S.tok_a1).post(`/users/${S.t1}/send-reset`), 'staff can send a reset');
+  assert.ok(ok(await api(S.sa).get('/audit?action=user.password_reset_sent&limit=1')).data.length >= 1, 'and it is recorded');
+  refused(await api(S.tok_aa).post(`/users/${S.t3}/send-reset`), 404, 'a client admin cannot reach another client\'s people');
+  refused(await api(S.tok_T1).post(`/users/${S.t2}/send-reset`), 403, 'trainees cannot send resets');
+  refused(await api(S.tok_a1).post(`/users/${S.fin}/send-reset`), 403, 'training admins cannot reset finance or other privileged accounts');
+});
+
+test('14c. the real client address is trusted only from the web app', async () => {
+  const key = process.env.PROXY_SHARED_SECRET;
+  const login = (headers) => fetch(`${base}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify({ email: email('super'), password: 'wrong-password' }) });
+  await login({ 'x-atmp-client-ip': '203.0.113.7', 'x-atmp-proxy-key': key });
+  await login({ 'x-atmp-client-ip': '198.51.100.99', 'x-atmp-proxy-key': 'not-the-secret-not-the-secret-123' });
+  await login({ 'x-atmp-client-ip': '198.51.100.98' });
+  const rows = (await db.query(`select ip from audit_logs where action = 'auth.login_failed' order by seq desc limit 3`)).rows.map((r) => r.ip);
+  assert.ok(rows.includes('203.0.113.7'), 'the address supplied by the web app is recorded');
+  assert.ok(!rows.includes('198.51.100.99') && !rows.includes('198.51.100.98'), 'an address supplied without the secret, or with the wrong one, is ignored');
+});
+
 test('15. scheduled jobs run cleanly and are idempotent', async () => {
   const run1 = spawnSync('node', ['dist/scripts/jobs.js'], { env: process.env, encoding: 'utf8' });
   assert.equal(run1.status, 0, run1.stderr);
@@ -560,5 +584,6 @@ test('16. the rate limiter really limits sign-in attempts', async () => {
     for (let i = 0; i < 12; i++) codes.push((await http('POST', '/auth/login', null, { email: 'brute@example.com', password: `guess${i}` })).status);
     assert.ok(codes.includes(429), `expected a 429 after repeated failures, got ${codes.join(',')}`);
     assert.equal(codes.slice(0, 5).every((c) => c === 401), true, 'the first attempts get a normal refusal');
-  } finally { process.env.THROTTLE_DISABLED = 'true'; }
+  } finally { process.env.THROTTLE_DISABLED = 'true';
+process.env.PROXY_SHARED_SECRET = 'test-proxy-secret-0123456789abcdef'; }
 });

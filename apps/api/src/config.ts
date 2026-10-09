@@ -34,6 +34,8 @@ const schema = z.object({
   CLAMAV_PORT: z.coerce.number().default(3310),
 
   RESEND_API_KEY: z.string().optional(),
+  // Shared with the web app. Lets the web app tell the API the real client address (for rate limiting and the audit log).
+  PROXY_SHARED_SECRET: z.string().min(24).optional(),
   // Optional path to the HAAB logo (PNG) used on certificates and invoices.
   LOGO_PATH: z.string().optional(),
   MAIL_FROM: z.string().default('HAAB Aviation Consultancy Services <training@localhost>'),
@@ -56,6 +58,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       problems.push('SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY are required');
     }
     if (source.THROTTLE_DISABLED === 'true') problems.push('THROTTLE_DISABLED must not be set in production');
+    if (!env.PROXY_SHARED_SECRET) problems.push('PROXY_SHARED_SECRET is required so the audit log and rate limits see real client addresses');
     if (env.STORAGE_DRIVER === 'local') problems.push('STORAGE_DRIVER=local loses files on redeploy; use supabase');
     if (problems.length) throw new Error(`Unsafe production configuration: ${problems.join('; ')}`);
   }
