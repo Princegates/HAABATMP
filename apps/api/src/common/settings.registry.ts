@@ -62,6 +62,14 @@ export const SETTINGS_PAGES: PageDef[] = [
     ],
   },
   {
+    key: 'trainee_access', title: 'Trainee Access', status: 'active', writeRoles: SUPER,
+    description: 'What trainees can see when they sign in.',
+    schema: z.object({ show_finance: z.boolean() }),
+    defaults: { show_finance: true },
+    fields: [{ name: 'show_finance', label: 'Show Finance (invoices and receipts) to trainees', type: 'boolean',
+      help: 'Turn this off if trainees never pay HAAB directly, for example when their employer is billed. They then see no invoices, and the platform refuses requests for them.' }],
+  },
+  {
     key: 'period', title: 'Training Period', status: 'active', writeRoles: SUPER,
     description: 'When the reporting year starts. Dashboards and reports default to the current period.',
     schema: z.object({ start_month: z.number().int().min(1).max(12) }),

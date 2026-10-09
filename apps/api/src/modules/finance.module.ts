@@ -1,4 +1,4 @@
-import { BadRequestException, Body, ConflictException, Controller, Get, Header, Inject, Module, NotFoundException, Param, Post, Query, Res, StreamableFile } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Header, Inject, Module, NotFoundException, Param, Post, Query, Res, StreamableFile } from '@nestjs/common';
 import { z } from 'zod';
 import { ENV, Env } from '../config';
 import { Actor, AuthUser } from '../common/auth.types';
@@ -26,6 +26,7 @@ export class FinanceController {
   @Get('invoices')
   @Require('invoices:read')
   async list(@CurrentUser() u: AuthUser, @Query() query: unknown) {
+    await this.assertTraineeMayUseFinance(u);
     const f = parse(pageQuery.extend({ status: z.enum(STATUSES).optional(), organization_id: uuid.optional(), programme_id: uuid.optional(), overdue: z.enum(['true']).optional() }), query);
     const params: any[] = [];
     const where: string[] = [];
@@ -194,7 +195,15 @@ export class FinanceController {
     return { issuer: org.name, address: org.address, email: org.email, phone: org.phone, registration: org.registration_number, headerText: print.header_text, footerText: print.footer_text, logoPath: this.env.LOGO_PATH, showLogo: print.show_logo };
   }
 
+  /** The Super Admin can hide Finance from trainees (System setting > Trainee Access). The platform enforces it, not just the menu. */
+  private async assertTraineeMayUseFinance(u: AuthUser) {
+    if (u.role !== 'trainee') return;
+    const s = await this.settings.get<{ show_finance: boolean }>('trainee_access');
+    if (!s.show_finance) throw new ForbiddenException('Invoices are not available to trainees');
+  }
+
   private async visible(u: AuthUser, id: string) {
+    await this.assertTraineeMayUseFinance(u);
     const params: any[] = [id];
     let scope = '';
     if (u.role === 'trainee') { params.push(u.id); scope = 'and i.trainee_id = $2'; }

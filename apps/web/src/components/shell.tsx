@@ -24,7 +24,7 @@ function isActive(path: string, href: string) {
 function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () => void }) {
   const { me } = useAuth();
   const path = usePathname();
-  const groups = navFor(me.role);
+  const groups = navFor(me.role).filter((g) => !(g.label === 'Finance' && !me.show_finance));
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   return (
     <aside className={`sidebar ${open ? 'open' : ''}`} aria-label="Main navigation">

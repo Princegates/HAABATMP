@@ -145,7 +145,7 @@ test('3. attendance: manual, rotating QR, and who may mark', async () => {
 
   // a live session for QR: starts five minutes ago, today, inside the programme dates
   const now = Date.now();
-  const live = ok(await api(S.tok_a1).post(`/programmes/${S.prog.id}/sessions`, { title: 'Live', starts_at: new Date(now - 5 * 60000).toISOString(), ends_at: new Date(now + 60 * 60000).toISOString(), instructor_id: S.instr }));
+  const live = ok(await api(S.tok_a1).post(`/programmes/${S.prog.id}/sessions`, { title: 'Live', starts_at: new Date(now - 5 * 60000).toISOString(), ends_at: new Date(Math.min(now + 60 * 60000, Date.parse(`${day(0)}T23:59:00Z`))).toISOString(), instructor_id: S.instr })); // never past midnight UTC, or it falls outside the programme dates
   const qr = ok(await instr.get(`/sessions/${live.id}/qr`));
   assert.ok(qr.expires_in <= 30);
   ok(await api(S.tok_T4).post('/attendance/qr-checkin', { token: qr.token }), 'T4 is enrolled so check-in works');
@@ -631,4 +631,20 @@ test('18. trainee self-registration: off by default, Super Admin switches it on,
     refused(await sa.post(`/registrations/${pending[0].id}/approve`, {}), 409, 'cannot decide twice');
   } finally { ok(await sa.put('/settings/pages/registration', { enabled: false, notice: '' })); }
   refused(await http('POST', '/registration', null, { email: email('late'), full_name: 'Too Late' }), 404, 'closed again');
+});
+
+test('19. the Super Admin can hide Finance from trainees, and the platform enforces it', async () => {
+  const sa = api(S.sa);
+  const t = api(S.tok_T1);
+  assert.equal(ok(await t.get('/auth/me')).show_finance, true, 'visible by default');
+  ok(await t.get('/invoices'));
+  refused(await api(S.tok_a1).put('/settings/pages/trainee_access', { show_finance: false }), [403, 404], 'only the Super Admin changes it');
+  ok(await sa.put('/settings/pages/trainee_access', { show_finance: false }));
+  try {
+    assert.equal(ok(await t.get('/auth/me')).show_finance, false);
+    refused(await t.get('/invoices'), 403, 'the invoice list is refused, not just hidden');
+    assert.equal(ok(await api(S.tok_fin).get('/auth/me')).show_finance, true, 'staff are unaffected');
+    ok(await api(S.tok_fin).get('/invoices'));
+  } finally { ok(await sa.put('/settings/pages/trainee_access', { show_finance: true })); }
+  ok(await t.get('/invoices'));
 });
