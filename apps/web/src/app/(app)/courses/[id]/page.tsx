@@ -1,5 +1,6 @@
 'use client';
 import { use, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { api, useApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Column, DataList } from '@/components/datalist';
@@ -17,6 +18,8 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
   const { id } = use(params);
   const { can } = useAuth();
   const toast = useToast();
+  const router = useRouter();
+  const [del, setDel] = useState(false);
   const course = useApi<any>(`/courses/${id}`);
   const cats = useCategoryOptions(); const allCourses = useCourseOptions(); const instructors = useInstructorOptions();
   const [tab, setTab] = useState('overview');
@@ -32,7 +35,10 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
   const progs: Column<any>[] = [{ key: 'code', label: 'Programme', href: (p) => `/programmes/${p.id}` }, { key: 'start_date', label: 'Starts', render: (p) => date(p.start_date) }, { key: 'end_date', label: 'Ends', render: (p) => date(p.end_date) }, { key: 'confirmed_count', label: 'Confirmed', num: true }, { key: 'status', label: 'Status', render: (p) => <Badge value={p.status} /> }];
   return (
     <>
-      <PageHead title={c.title} crumbs={[{ label: 'Courses', href: '/courses' }, { label: c.code }]} subtitle={<><span className="mono">{c.code}</span> · {c.category_name} · <Badge value={c.status} /></>} actions={w && <button className="btn outline" onClick={() => setEdit(true)}>Edit course</button>} />
+      <PageHead title={c.title} crumbs={[{ label: 'Courses', href: '/courses' }, { label: c.code }]} subtitle={<><span className="mono">{c.code}</span> · {c.category_name} · <Badge value={c.status} /></>} actions={w && <span className="row"><button className="btn outline" onClick={() => setEdit(true)}>Edit course</button><button className="btn ghost" onClick={() => setDel(true)}>Delete</button></span>} />
+      {del && <ConfirmModal title={`Delete ${c.code}?`} danger confirmLabel="Delete course" onClose={() => setDel(false)}
+        message={<>Delete <b>{c.title}</b> and its modules, question bank and requirements? This cannot be undone. If it has programmes, certificates or assessments, the platform will refuse and you can archive it instead (Edit course, then set the status to Archived).</>}
+        onConfirm={async () => { await api.del(`/courses/${id}`); toast('Course deleted'); router.push('/courses'); }} />}
       <Tabs value={tab} onChange={setTab} tabs={[{ key: 'overview', label: 'Overview' }, { key: 'content', label: 'Modules and materials', count: c.modules.length }, { key: 'requirements', label: 'Requirements' }, { key: 'programmes', label: 'Programmes' }]} />
       {tab === 'overview' && (
         <div className="grid c2">

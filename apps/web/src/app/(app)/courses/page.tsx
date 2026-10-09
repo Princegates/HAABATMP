@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Column, DataList } from '@/components/datalist';
 import { FormModal } from '@/components/form';
-import { Badge, PageHead } from '@/components/ui';
+import { Badge, ConfirmModal, PageHead } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { courseFields } from '@/lib/course-fields';
 import { money, label } from '@/lib/format';
@@ -18,6 +18,7 @@ function Inner() {
   const cats = useCategoryOptions();
   const [form, setForm] = useState<boolean>(false);
   const [tick, setTick] = useState(0);
+  const [del, setDel] = useState<any | null>(null);
   useEffect(() => { if (params.get('new') && can('courses:write')) setForm(true); }, [params, can]);
   const columns: Column<any>[] = [
     { key: 'code', label: 'Code', render: (c) => <span className="mono">{c.code}</span>, href: (c) => `/courses/${c.id}` }, { key: 'title', label: 'Course', render: (c) => <b style={{ fontWeight: 600 }}>{c.title}</b> }, { key: 'category_name', label: 'Category' },
@@ -29,7 +30,11 @@ function Inner() {
       <PageHead title="Course" accent="catalogue" subtitle="Every course HAAB delivers, with its pass mark, attendance rule and how long the certificate lasts." actions={can('courses:write') && <button className="btn" onClick={() => setForm(true)}>New course</button>} />
       <DataList path="/courses" columns={columns} refreshKey={tick} searchPlaceholder="Search code or title"
         filters={[{ name: 'category_id', label: 'Category', options: cats }, ...(can('courses:write') ? [{ name: 'status', label: 'Status', options: ['draft', 'active', 'archived'].map((s) => ({ value: s, label: label(s) })) }] : [])]}
+        actions={(c) => can('courses:write') && <span className="row" style={{ justifyContent: 'flex-end' }}><button className="btn ghost sm" onClick={() => setDel(c)}>Delete</button></span>}
         empty={{ title: 'No courses yet', hint: can('courses:write') ? 'Create the first course to start scheduling programmes.' : undefined }} />
+      {del && <ConfirmModal title={`Delete ${del.code}?`} danger confirmLabel="Delete course" onClose={() => setDel(null)}
+        message={<>Delete <b>{del.title}</b> and its modules, question bank and requirements? This cannot be undone. If it has programmes, certificates or assessments, the platform will refuse and you can archive it instead.</>}
+        onConfirm={async () => { await api.del(`/courses/${del.id}`); toast('Course deleted'); setTick((t) => t + 1); }} />}
       {form && <FormModal title="New course" size="wide" fields={courseFields(cats)} initial={{ delivery_method: 'classroom', duration_hours: 8, capacity: 20, fee: 0, pass_mark: 70, min_attendance_pct: 80, status: 'draft' }} onClose={() => setForm(false)}
         onSubmit={async (v) => { await api.post('/courses', v); toast('Course created'); setTick((t) => t + 1); }} />}
     </>

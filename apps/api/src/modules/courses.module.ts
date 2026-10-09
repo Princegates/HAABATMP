@@ -2,7 +2,7 @@ import { BadRequestException, Body, ConflictException, Controller, Delete, Get, 
 import { z } from 'zod';
 import { Actor, AuthUser } from '../common/auth.types';
 import { AuditService } from '../common/audit.service';
-import { Db } from '../common/db.service';
+import { Db, Q } from '../common/db.service';
 import { ActorCtx, CurrentUser, Require } from '../common/decorators';
 import { isStaff } from '../common/scope';
 import { isoDate, pageQuery, parse, uuid } from '../common/validation';
@@ -52,7 +52,7 @@ export class CoursesController {
   @Get('course-categories')
   @Require('courses:read')
   categories() {
-    return this.db.query('select * from course_categories order by name');
+    return this.db.query('select c.*, (select count(*) from courses x where x.category_id = c.id)::int as course_count from course_categories c order by c.name');
   }
 
   @Post('course-categories')
@@ -78,6 +78,65 @@ export class CoursesController {
         [id, d.name ?? before.name, d.description === undefined ? before.description : d.description]);
       await this.audit.log(q, actor, 'course_category.update', 'course_category', id, before, after);
       return after;
+    });
+  }
+
+  /**
+   * Deleting is only allowed while nothing real depends on the course. Once a programme, a certificate or an assessment
+   * exists, the training record has to stay, so the answer is "archive it instead".
+   */
+  private async deleteCourseIn(q: Q, id: string, actor: Actor) {
+    const course = await q.one<any>('select * from courses where id = $1 for update', [id]);
+    if (!course) throw new NotFoundException();
+    const n = await q.one<{ programmes: number; certificates: number; assessments: number }>(
+      `select (select count(*) from programmes where course_id = $1)::int as programmes,
+              (select count(*) from certificates where course_id = $1)::int as certificates,
+              (select count(*) from assessments where course_id = $1)::int as assessments`, [id]);
+    const used = [n!.programmes && `${n!.programmes} programme${n!.programmes === 1 ? '' : 's'}`, n!.certificates && `${n!.certificates} certificate${n!.certificates === 1 ? '' : 's'}`, n!.assessments && `${n!.assessments} assessment${n!.assessments === 1 ? '' : 's'}`].filter(Boolean);
+    if (used.length) throw new ConflictException(`${course.code} cannot be deleted because it has ${used.join(', ')}. Archive it instead so the training history is kept.`);
+    // set-up that only exists to serve this course goes with it
+    await q.query('delete from course_prerequisites where course_id = $1 or prerequisite_id = $1', [id]);
+    await q.query('delete from compliance_requirements where course_id = $1', [id]);
+    await q.query('delete from questions where course_id = $1', [id]);
+    try {
+      await q.query('delete from courses where id = $1', [id]);
+    } catch (e: any) {
+      if (e.code === '23503') throw new ConflictException(`${course.code} is still used by other records. Archive it instead.`);
+      throw e;
+    }
+    await this.audit.log(q, actor, 'course.delete', 'course', id, course, null);
+    return course;
+  }
+
+  @Delete('courses/:id')
+  @Require('courses:write')
+  async deleteCourse(@Param('id') id: string, @ActorCtx() actor: Actor) {
+    parse(uuid, id);
+    const c = await this.db.tx((q) => this.deleteCourseIn(q, id, actor));
+    return { ok: true, deleted: c.code };
+  }
+
+  @Delete('course-categories/:id')
+  @Require('courses:write')
+  async deleteCategory(@Param('id') id: string, @Query() query: unknown, @ActorCtx() actor: Actor) {
+    parse(uuid, id);
+    const { with_courses } = parse(z.object({ with_courses: z.enum(['true']).optional() }), query);
+    return this.db.tx(async (q) => {
+      const cat = await q.one<any>('select * from course_categories where id = $1 for update', [id]);
+      if (!cat) throw new NotFoundException();
+      const courses = await q.query<{ id: string; code: string }>('select id, code from courses where category_id = $1 order by code', [id]);
+      if (courses.length && !with_courses) {
+        throw new ConflictException(`${cat.name} still has ${courses.length} course${courses.length === 1 ? '' : 's'}. Delete them first, or delete the category together with its courses.`);
+      }
+      const blocked: string[] = [];
+      for (const c of courses) {
+        try { await q.query('savepoint c'); await this.deleteCourseIn(q, c.id, actor); await q.query('release savepoint c'); }
+        catch (e) { await q.query('rollback to savepoint c'); if (e instanceof ConflictException) blocked.push(c.code); else throw e; }
+      }
+      if (blocked.length) throw new ConflictException(`Nothing was deleted. These courses have programmes, certificates or assessments and can only be archived: ${blocked.join(', ')}.`);
+      await q.query('delete from course_categories where id = $1', [id]);
+      await this.audit.log(q, actor, 'course_category.delete', 'course_category', id, { ...cat, courses_deleted: courses.map((c) => c.code) }, null);
+      return { ok: true, deleted: cat.code, courses_deleted: courses.length };
     });
   }
 

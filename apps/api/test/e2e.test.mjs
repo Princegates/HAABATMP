@@ -31,7 +31,7 @@ async function http(method, path, token, body, raw = false) {
   return { status: res.status, body: json };
 }
 const api = (token) => ({
-  get: (p) => http('GET', p, token), post: (p, b = {}) => http('POST', p, token, b), put: (p, b) => http('PUT', p, token, b), patch: (p, b) => http('PATCH', p, token, b),
+  get: (p) => http('GET', p, token), delete: (p) => http('DELETE', p, token), post: (p, b = {}) => http('POST', p, token, b), put: (p, b) => http('PUT', p, token, b), patch: (p, b) => http('PATCH', p, token, b),
   raw: (p) => http('GET', p, token, undefined, true),
 });
 const ok = (r, msg) => { assert.ok(r.status >= 200 && r.status < 300, `${msg ?? 'request'} expected 2xx, got ${r.status}: ${JSON.stringify(r.body ?? '').slice(0, 300)}`); return r.body; };
@@ -647,4 +647,39 @@ test('19. the Super Admin can hide Finance from trainees, and the platform enfor
     ok(await api(S.tok_fin).get('/invoices'));
   } finally { ok(await sa.put('/settings/pages/trainee_access', { show_finance: true })); }
   ok(await t.get('/invoices'));
+});
+
+test('20. courses and categories can be deleted, unless real training records depend on them', async () => {
+  const a1 = api(S.tok_a1);
+  const k = letters(3);
+  const cat = ok(await a1.post('/course-categories', { code: k, name: `Delete me ${run}` }));
+  const c1 = ok(await a1.post('/courses', { code: `DEL1-${run}`.toUpperCase(), title: 'Draft one', category_id: cat.id, duration_hours: 1, fee: 0, pass_mark: 70, min_attendance_pct: 80, status: 'draft' }));
+  const c2 = ok(await a1.post('/courses', { code: `DEL2-${run}`.toUpperCase(), title: 'Draft two', category_id: cat.id, duration_hours: 1, fee: 0, pass_mark: 70, min_attendance_pct: 80, status: 'draft' }));
+  // who may delete
+  refused(await api(S.tok_T1).delete(`/courses/${c1.id}`), 403, 'trainees cannot delete courses');
+  refused(await api(S.tok_fin).delete(`/course-categories/${cat.id}`), 403, 'finance cannot delete categories');
+  // a category that still has courses is protected unless the caller says so
+  const cats = ok(await a1.get('/course-categories')).find((c) => c.id === cat.id);
+  assert.equal(cats.course_count, 2);
+  refused(await a1.delete(`/course-categories/${cat.id}`), 409, 'category still has courses');
+  // a single unused draft course goes
+  ok(await a1.delete(`/courses/${c1.id}`));
+  refused(await a1.get(`/courses/${c1.id}`), 404, 'it is really gone');
+  // a course with a programme is refused and keeps everything
+  ok(await a1.post('/programmes', { course_id: c2.id, start_date: day(5), end_date: day(6), capacity: 5, fee: 0 }));
+  const blocked = await a1.delete(`/courses/${c2.id}`);
+  refused(blocked, 409, 'course with a programme');
+  assert.match(blocked.body.message, /Archive it instead/);
+  const blockedCat = await a1.delete(`/course-categories/${cat.id}?with_courses=true`);
+  refused(blockedCat, 409, 'category delete is all or nothing');
+  ok(await a1.get(`/courses/${c2.id}`));
+  // an unused category and its draft courses go together
+  const cat2 = ok(await a1.post('/course-categories', { code: letters(3), name: `Delete me too ${run}` }));
+  const d = ok(await a1.post('/courses', { code: `DEL3-${run}`.toUpperCase(), title: 'Draft three', category_id: cat2.id, duration_hours: 1, fee: 0, pass_mark: 70, min_attendance_pct: 80, status: 'draft' }));
+  const gone = ok(await a1.delete(`/course-categories/${cat2.id}?with_courses=true`));
+  assert.equal(gone.courses_deleted, 1);
+  refused(await a1.get(`/courses/${d.id}`), 404);
+  // the audit log keeps the record of what was deleted
+  const audit = [...ok(await api(S.sa).get('/audit?action=course.delete&limit=5')).data, ...ok(await api(S.sa).get('/audit?action=course_category.delete&limit=5')).data].map((r) => r.action);
+  assert.ok(audit.includes('course.delete') && audit.includes('course_category.delete'));
 });
