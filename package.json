@@ -1,0 +1,15 @@
+{
+  "name": "haab-atmp",
+  "private": true,
+  "version": "0.1.0",
+  "description": "HAAB Aviation Training Management Platform",
+  "workspaces": ["apps/api", "apps/web"],
+  "scripts": {
+    "migrate": "node scripts/migrate.mjs",
+    "dev:api": "npm run start:dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "build": "npm run build -w apps/api && npm run build -w apps/web",
+    "test": "npm run test -w apps/api"
+  },
+  "engines": { "node": ">=20" }
+}
