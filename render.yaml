@@ -1,24 +1,8 @@
 # Render blueprint for production. See docs/DEPLOYMENT.md for the full go-live checklist.
-# Secrets (sync: false) are entered once in the Render dashboard and never stored in git.
+# Secrets (sync: false) are asked for once when you create the Blueprint and are never stored in git.
+# Environment groups cannot hold prompted secrets, so each service lists its own variables.
 # For a staging copy, use render.staging.yaml with a separate Supabase project.
-
-envVarGroups:
-  - name: haab-atmp-production
-    envVars:
-      - { key: NODE_ENV, value: production }
-      - { key: AUTH_MODE, value: supabase }
-      - { key: STORAGE_DRIVER, value: supabase }
-      - { key: SUPABASE_STORAGE_BUCKET, value: atmp-documents }
-      - { key: DATABASE_SSL, value: "true" }
-      - { key: DATABASE_URL, sync: false }          # Supabase pooled connection string
-      - { key: DATABASE_URL_DIRECT, sync: false }   # optional. Leave it out unless you have the IPv4 add-on; migrations then use DATABASE_URL
-      - { key: SUPABASE_URL, sync: false }
-      - { key: SUPABASE_ANON_KEY, sync: false }
-      - { key: SUPABASE_SERVICE_ROLE_KEY, sync: false }
-      - { key: DATA_ENCRYPTION_KEY, sync: false }   # openssl rand -base64 32
-      - { key: WEB_ORIGIN, sync: false }            # https://training.<your domain>
-      - { key: PUBLIC_WEB_URL, sync: false }        # same as WEB_ORIGIN
-      - { key: PROXY_SHARED_SECRET, sync: false }   # random 24+ characters; the web service needs the SAME value
+# Production deploys from the `production` branch. Merge to it only when a release has passed staging.
 
 services:
   - type: web
@@ -26,28 +10,42 @@ services:
     runtime: node
     region: frankfurt
     plan: starter
-    branch: main
+    branch: production
     buildCommand: npm ci --include=dev && npm run build -w apps/api
     startCommand: node apps/api/dist/main.js
-    # Applies new database migrations before each release (paid plans). On a free plan run: npm run migrate
+    # Applies new database migrations before each release.
     preDeployCommand: node scripts/migrate.mjs
     healthCheckPath: /health
     autoDeploy: true
     envVars:
-      - fromGroup: haab-atmp-production
+      - { key: NODE_ENV, value: production }
+      - { key: NODE_VERSION, value: "22" }
+      - { key: AUTH_MODE, value: supabase }
+      - { key: STORAGE_DRIVER, value: supabase }
+      - { key: SUPABASE_STORAGE_BUCKET, value: atmp-documents }
+      - { key: DATABASE_SSL, value: "true" }
+      - { key: DATABASE_URL, sync: false }          # Supabase Transaction pooler string (port 6543), password filled in
+      - { key: SUPABASE_URL, sync: false }          # https://<project>.supabase.co
+      - { key: SUPABASE_ANON_KEY, sync: false }     # the publishable key (or legacy anon key)
+      - { key: SUPABASE_SERVICE_ROLE_KEY, sync: false }   # the secret key (or legacy service_role key)
+      - { key: DATA_ENCRYPTION_KEY, sync: false }   # 32 random bytes, base64. Keep a sealed copy.
+      - { key: WEB_ORIGIN, sync: false }            # https://training.<your domain>
+      - { key: PUBLIC_WEB_URL, sync: false }        # same as WEB_ORIGIN
+      - { key: PROXY_SHARED_SECRET, sync: false }   # random hex; the web service needs the SAME value
 
   - type: web
     name: haab-atmp-web
     runtime: node
     region: frankfurt
     plan: starter
-    branch: main
+    branch: production
     buildCommand: npm ci --include=dev && npm run build -w apps/web
     startCommand: npm run start -w apps/web
     healthCheckPath: /login
     autoDeploy: true
     envVars:
       - { key: NODE_ENV, value: production }
+      - { key: NODE_VERSION, value: "22" }
       - { key: PROXY_SHARED_SECRET, sync: false }   # same value as on the API
       - { key: API_URL, sync: false }               # the API's URL, for example https://haab-atmp-api.onrender.com
 
@@ -58,9 +56,22 @@ services:
     runtime: node
     region: frankfurt
     plan: starter
-    branch: main
+    branch: production
     schedule: "*/15 * * * *"
     buildCommand: npm ci --include=dev && npm run build -w apps/api
     startCommand: node apps/api/dist/scripts/jobs.js
     envVars:
-      - fromGroup: haab-atmp-production
+      - { key: NODE_ENV, value: production }
+      - { key: NODE_VERSION, value: "22" }
+      - { key: AUTH_MODE, value: supabase }
+      - { key: STORAGE_DRIVER, value: supabase }
+      - { key: SUPABASE_STORAGE_BUCKET, value: atmp-documents }
+      - { key: DATABASE_SSL, value: "true" }
+      - { key: DATABASE_URL, sync: false }          # Supabase Transaction pooler string (port 6543), password filled in
+      - { key: SUPABASE_URL, sync: false }          # https://<project>.supabase.co
+      - { key: SUPABASE_ANON_KEY, sync: false }     # the publishable key (or legacy anon key)
+      - { key: SUPABASE_SERVICE_ROLE_KEY, sync: false }   # the secret key (or legacy service_role key)
+      - { key: DATA_ENCRYPTION_KEY, sync: false }   # 32 random bytes, base64. Keep a sealed copy.
+      - { key: WEB_ORIGIN, sync: false }            # https://training.<your domain>
+      - { key: PUBLIC_WEB_URL, sync: false }        # same as WEB_ORIGIN
+      - { key: PROXY_SHARED_SECRET, sync: false }   # random hex; the web service needs the SAME value

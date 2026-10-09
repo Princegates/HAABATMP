@@ -31,12 +31,14 @@ openssl rand -hex 24       # PROXY_SHARED_SECRET. Set the same value on the API 
 
 ## 3. Render
 
-1. Push this repository to GitHub, then in Render choose **New > Blueprint** and select it. It reads `render.yaml`.
-2. Fill in the secret values it asks for (marked `sync: false`): the Supabase values, `DATA_ENCRYPTION_KEY`, `PROXY_SHARED_SECRET` (on both services),
-   `WEB_ORIGIN` and `PUBLIC_WEB_URL` (your final address, for example `https://training.yourdomain.com`),
-   and `API_URL` for the web service (the API's URL).
-3. Choose the Frankfurt region unless advised otherwise. There is no African region.
-4. Deploy. The API runs database migrations before each release.
+1. Create a branch called `production` from the release you tested on staging. Production deploys only from it.
+2. In Render choose **New > Blueprint**, select the repository, set the branch to `production`, and the Blueprint path to `render.yaml`.
+3. Render asks for each secret (the ones marked `sync: false`) for the API, the web service and the housekeeping job. The API and the housekeeping job take the same values.
+   `DATABASE_URL` is the Supabase **Transaction pooler** string with your password in it (letters and digits only avoids encoding problems).
+   `WEB_ORIGIN` and `PUBLIC_WEB_URL` are your final address (for example `https://training.yourdomain.com`; use the `onrender.com` address until the domain is connected).
+   `PROXY_SHARED_SECRET` must be identical on the API, the web service and the job. `API_URL` is the API's own address.
+4. Choose the Frankfurt region unless advised otherwise. There is no African region.
+5. Deploy. The API applies database migrations before each release.
 
 Check: `https://<api-url>/health` answers `{"status":"ok"}` and the web address shows the sign-in page.
 
