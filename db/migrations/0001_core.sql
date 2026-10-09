@@ -405,7 +405,7 @@ create table certificate_templates (
   signatory_name text,
   signatory_title text,
   footer_text text,
-  accent_color text not null default '#1f3a5f' check (accent_color ~ '^#[0-9a-fA-F]{6}$'),
+  accent_color text not null default '#b8966e' check (accent_color ~ '^#[0-9a-fA-F]{6}$'),
   is_default boolean not null default false,
   created_at timestamptz not null default now()
 );
@@ -580,7 +580,7 @@ begin
   new.seq := coalesce(last_seq, 0) + 1;
   new.prev_hash := coalesce(last_hash, '');
   new.hash := encode(sha256(convert_to(
-      new.prev_hash || '|' || new.seq::text || '|' || new.at::text || '|' ||
+      new.prev_hash || '|' || new.seq::text || '|' || to_char(new.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') || '|' ||
       coalesce(new.actor_id::text, '') || '|' || new.action || '|' || new.entity_type || '|' ||
       coalesce(new.entity_id, '') || '|' || coalesce(new.before_data::text, '') || '|' ||
       coalesce(new.after_data::text, ''), 'UTF8')), 'hex');

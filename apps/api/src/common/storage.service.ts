@@ -3,6 +3,7 @@ import { createConnection } from 'node:net';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { ENV, Env } from '../config';
+import { IntegrationsService } from './integrations.service';
 
 export interface StoredFile { body: Buffer }
 
@@ -57,17 +58,35 @@ export class StorageService {
   }
 }
 
-/** Optional virus scan through a clamd daemon (INSTREAM). Without CLAMAV_HOST uploads are not scanned. */
+/** Optional virus scan through a clamd daemon (INSTREAM). Host and port come from API & Integrations. */
 @Injectable()
 export class MalwareScanner {
-  constructor(@Inject(ENV) private readonly env: Env) {}
+  constructor(private readonly integrations: IntegrationsService) {}
 
-  get enabled() { return Boolean(this.env.CLAMAV_HOST); }
+  async enabled(): Promise<boolean> {
+    const c = await this.integrations.resolve('malware_scan');
+    return c.enabled && Boolean(c.values.host);
+  }
+
+  async ping(): Promise<boolean> {
+    const c = await this.integrations.resolve('malware_scan');
+    if (!c.values.host) throw new Error('No host is configured');
+    return new Promise<boolean>((resolve, reject) => {
+      const sock = createConnection({ host: c.values.host, port: Number(c.values.port ?? 3310) });
+      let reply = '';
+      sock.setTimeout(8000, () => { sock.destroy(); reject(new Error('The scanner did not answer in time')); });
+      sock.on('error', reject);
+      sock.on('data', (d) => (reply += d.toString()));
+      sock.on('close', () => resolve(reply.includes('PONG')));
+      sock.write('zPING\0');
+    });
+  }
 
   async clean(body: Buffer): Promise<boolean> {
-    if (!this.env.CLAMAV_HOST) return true;
+    const c = await this.integrations.resolve('malware_scan');
+    if (!c.enabled || !c.values.host) return true;
     return new Promise<boolean>((resolve, reject) => {
-      const sock = createConnection({ host: this.env.CLAMAV_HOST!, port: this.env.CLAMAV_PORT });
+      const sock = createConnection({ host: c.values.host, port: Number(c.values.port ?? 3310) });
       let reply = '';
       sock.setTimeout(30000, () => { sock.destroy(); reject(new Error('virus scan timed out')); });
       sock.on('error', reject);

@@ -23,7 +23,8 @@ export type Permission =
   | 'documents:read' | 'documents:write' | 'documents:delete'
   | 'compliance:read' | 'compliance:write'
   | 'reports:read' | 'audit:read'
-  | 'settings:read' | 'settings:write';
+  | 'settings:read' | 'settings:write'
+  | 'integrations:manage';
 
 const ALL: Permission[] = [
   'users:read', 'users:write', 'orgs:read', 'orgs:write', 'courses:read', 'courses:write',
@@ -34,7 +35,7 @@ const ALL: Permission[] = [
   'invoices:read', 'invoices:write', 'payments:write',
   'documents:read', 'documents:write', 'documents:delete',
   'compliance:read', 'compliance:write', 'reports:read', 'audit:read',
-  'settings:read', 'settings:write',
+  'settings:read', 'settings:write', 'integrations:manage',
 ];
 
 // Segregation of duties is deliberate:

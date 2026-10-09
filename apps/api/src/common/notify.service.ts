@@ -41,30 +41,31 @@ export class NotifyService {
     }
   }
 
+  /**
+   * Sends queued emails. The rows stay locked (skip locked) for the whole batch, so two overlapping runs
+   * never send the same message twice.
+   */
   async processOutbox(batch = 50): Promise<{ sent: number; failed: number }> {
-    const rows = await this.db.query<{ id: string; to_email: string; subject: string; body: string; attempts: number }>(
-      `select id, to_email, subject, body, attempts from notifications
-        where channel = 'email' and status = 'pending' and attempts < 5
-        order by created_at limit $1 for update skip locked`,
-      [batch],
-    );
-    let sent = 0;
-    let failed = 0;
-    for (const n of rows) {
-      try {
-        await this.mailer.send(n.to_email, n.subject, n.body);
-        await this.db.query(`update notifications set status='sent', sent_at=now(), attempts=attempts+1, error=null where id=$1`, [n.id]);
-        sent++;
-      } catch (e: any) {
-        const exhausted = n.attempts + 1 >= 5;
-        await this.db.query(
-          `update notifications set attempts=attempts+1, error=$2, status=$3 where id=$1`,
-          [n.id, String(e.message).slice(0, 300), exhausted ? 'failed' : 'pending'],
-        );
-        failed++;
-        this.log.warn(`email ${n.id} failed: ${e.message}`);
+    return this.db.tx(async (q) => {
+      const rows = await q.query<{ id: string; to_email: string; subject: string; body: string; attempts: number }>(
+        `select id, to_email, subject, body, attempts from notifications
+          where channel = 'email' and status = 'pending' and attempts < 5
+          order by created_at limit $1 for update skip locked`, [batch]);
+      let sent = 0;
+      let failed = 0;
+      for (const n of rows) {
+        try {
+          await this.mailer.send(n.to_email, n.subject, n.body);
+          await q.query(`update notifications set status='sent', sent_at=now(), attempts=attempts+1, error=null where id=$1`, [n.id]);
+          sent++;
+        } catch (e: any) {
+          const exhausted = n.attempts + 1 >= 5;
+          await q.query(`update notifications set attempts=attempts+1, error=$2, status=$3 where id=$1`, [n.id, String(e.message).slice(0, 300), exhausted ? 'failed' : 'pending']);
+          failed++;
+          this.log.warn(`email ${n.id} failed: ${e.message}`);
+        }
       }
-    }
-    return { sent, failed };
+      return { sent, failed };
+    });
   }
 }

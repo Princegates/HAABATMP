@@ -341,13 +341,13 @@ export class AssessmentsController {
   async save(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() body: unknown) {
     parse(uuid, id);
     const { answers } = parse(z.object({ answers: z.record(uuid, z.any()) }), body);
-    return this.db.tx(async (q) => {
+    const outcome = await this.db.tx(async (q) => {
       const a = await q.one<any>('select * from exam_attempts where id = $1 and trainee_id = $2 for update', [id, u.id]);
       if (!a) throw new NotFoundException();
       if (a.status !== 'in_progress') throw new ConflictException('This attempt has already been submitted');
       if (new Date(a.deadline_at).getTime() + GRACE_MS < Date.now()) {
         await this.finish(q, id, true);
-        throw new ConflictException({ statusCode: 409, message: 'Time is up. Your saved answers have been submitted.', code: 'TIME_UP' });
+        return { timeUp: true as const }; // returned, not thrown: throwing here would roll the submission back
       }
       const allowed = new Set<string>(a.question_order);
       let saved = 0;
@@ -359,8 +359,10 @@ export class AssessmentsController {
           [id, qid, JSON.stringify(response ?? null)]);
         saved++;
       }
-      return { saved, server_time: new Date().toISOString(), deadline_at: a.deadline_at };
+      return { timeUp: false as const, saved, deadline_at: a.deadline_at };
     });
+    if (outcome.timeUp) throw new ConflictException({ statusCode: 409, message: 'Time is up. Your saved answers have been submitted.', code: 'TIME_UP' });
+    return { saved: outcome.saved, server_time: new Date().toISOString(), deadline_at: outcome.deadline_at };
   }
 
   @Post('attempts/:id/submit')
@@ -440,6 +442,13 @@ export class AssessmentsController {
       await this.audit.log(q, actor, 'attempt.mark', 'exam_attempt', id, { score: a.score, status: a.status }, { score: out.score, status: after.status });
       return after;
     });
+  }
+
+  /** Called by the scheduled job: closes attempts whose time ran out while the trainee was away. */
+  async sweepExpiredAttempts(): Promise<number> {
+    const rows = await this.db.query<{ id: string }>(`select id from exam_attempts where status = 'in_progress' and deadline_at + interval '10 seconds' < now()`);
+    for (const r of rows) await this.db.tx((q) => this.finish(q, r.id, true));
+    return rows.length;
   }
 
   // ------------------------------------------------------------ internals

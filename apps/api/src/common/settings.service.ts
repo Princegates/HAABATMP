@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Db, Q } from './db.service';
+import { PAGE_BY_KEY } from './settings.registry';
 
 export interface TrainingSettings {
   default_pass_mark: number;
@@ -20,7 +21,8 @@ export class SettingsService {
 
   async get<T = any>(key: string, q?: Q): Promise<T> {
     const row = await (q ?? this.db).one<{ value: T }>('select value from settings where key = $1', [key]);
-    return (row?.value ?? {}) as T;
+    // stored values override the registry defaults, so a newly added field is never undefined
+    return { ...(PAGE_BY_KEY.get(key)?.defaults ?? {}), ...((row?.value as object) ?? {}) } as T;
   }
 
   training(q?: Q) { return this.get<TrainingSettings>('training', q); }
