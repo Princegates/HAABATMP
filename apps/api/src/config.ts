@@ -34,7 +34,7 @@ const schema = z.object({
   CLAMAV_PORT: z.coerce.number().default(3310),
 
   RESEND_API_KEY: z.string().optional(),
-  MAIL_FROM: z.string().default('HAAB Training <training@localhost>'),
+  MAIL_FROM: z.string().default('HAAB Aviation Consultancy Services <training@localhost>'),
 });
 
 export type Env = z.infer<typeof schema>;

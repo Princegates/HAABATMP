@@ -1,0 +1,161 @@
+import { BadRequestException, Body, Controller, Get, Inject, Post, Req, UnauthorizedException } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import type { Request } from 'express';
+import { z } from 'zod';
+import { ENV, Env } from '../config';
+import { Actor, AuthUser } from '../common/auth.types';
+import { AuditService } from '../common/audit.service';
+import { Db } from '../common/db.service';
+import { ActorCtx, AllowWithoutMfa, CurrentUser, Public } from '../common/decorators';
+import { PERMISSIONS } from '../common/permissions';
+import { TokenService } from '../common/token.service';
+import { parse } from '../common/validation';
+import { timingSafeEqual } from 'node:crypto';
+
+const loginSchema = z.object({ email: z.string().email().max(200), password: z.string().min(1).max(200) });
+
+@Controller('auth')
+export class AuthController {
+  private readonly mfaRoles: Set<string>;
+
+  constructor(
+    private readonly db: Db,
+    private readonly tokens: TokenService,
+    private readonly audit: AuditService,
+    @Inject(ENV) private readonly env: Env,
+  ) {
+    this.mfaRoles = new Set(env.MFA_ROLES.split(',').map((s) => s.trim()).filter(Boolean));
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 8, ttl: 60_000 } })
+  @Post('login')
+  async login(@Body() body: unknown, @ActorCtx() actorBase: Actor) {
+    const { email, password } = parse(loginSchema, body);
+    const fail = async (why: string) => {
+      await this.audit.log(null, { ...actorBase, email }, 'auth.login_failed', 'user', null, null, { reason: why });
+      throw new UnauthorizedException('Incorrect email or password');
+    };
+
+    if (this.env.AUTH_MODE === 'dev') {
+      const user = await this.db.one<any>('select * from users where lower(email) = lower($1)', [email]);
+      const a = Buffer.from(password);
+      const b = Buffer.from(this.env.DEV_PASSWORD);
+      const ok = a.length === b.length && timingSafeEqual(a, b);
+      if (!user || !ok || user.status === 'suspended') return fail(!user ? 'unknown user' : user.status === 'suspended' ? 'suspended' : 'bad password');
+      await this.db.query(`update users set last_login_at = now(), status = case when status='invited' then 'active' else status end where id = $1`, [user.id]);
+      await this.audit.log(null, { id: user.id, email: user.email, role: user.role, ip: actorBase.ip }, 'auth.login', 'user', user.id);
+      return { access_token: await this.tokens.signDev(user.id, user.email), expires_in: 8 * 3600, mfa_required: false };
+    }
+
+    const res = await fetch(`${this.env.SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { apikey: this.env.SUPABASE_ANON_KEY!, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) return fail('rejected by identity provider');
+    const session: any = await res.json();
+    const claims = await this.tokens.verify(session.access_token);
+    const user = await this.db.one<any>(
+      `select * from users where auth_user_id = $1 or (auth_user_id is null and lower(email) = lower($2))`, [claims.sub, email]);
+    if (!user || user.status === 'suspended') return fail('not provisioned or suspended');
+    await this.db.query('update users set last_login_at = now() where id = $1', [user.id]);
+    await this.audit.log(null, { id: user.id, email: user.email, role: user.role, ip: actorBase.ip }, 'auth.login', 'user', user.id);
+    const needsMfa = this.mfaRoles.has(user.role);
+    return {
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      expires_in: session.expires_in,
+      mfa_required: needsMfa && claims.aal !== 'aal2',
+      mfa_enrolled: (session.user?.factors ?? []).some((f: any) => f.status === 'verified'),
+      mfa_factor_id: (session.user?.factors ?? []).find((f: any) => f.status === 'verified')?.id ?? null,
+    };
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('refresh')
+  async refresh(@Body() body: unknown) {
+    if (this.env.AUTH_MODE !== 'supabase') throw new BadRequestException('Not available in development mode');
+    const { refresh_token } = parse(z.object({ refresh_token: z.string().min(10) }), body);
+    const res = await fetch(`${this.env.SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: { apikey: this.env.SUPABASE_ANON_KEY!, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token }),
+    });
+    if (!res.ok) throw new UnauthorizedException('Session expired, please sign in again');
+    const s: any = await res.json();
+    return { access_token: s.access_token, refresh_token: s.refresh_token, expires_in: s.expires_in };
+  }
+
+  @AllowWithoutMfa()
+  @Get('me')
+  async me(@CurrentUser() user: AuthUser) {
+    const org = user.organizationId
+      ? await this.db.one<{ id: string; name: string }>('select id, name from organizations where id = $1', [user.organizationId])
+      : null;
+    return {
+      id: user.id, email: user.email, full_name: user.fullName, role: user.role,
+      organization: org,
+      permissions: [...PERMISSIONS[user.role]],
+      mfa_required: this.mfaRoles.has(user.role),
+      mfa_verified: user.mfa,
+    };
+  }
+
+  /** Starts TOTP enrolment (Supabase). The user must be signed in. */
+  @AllowWithoutMfa()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('mfa/enroll')
+  async mfaEnroll(@Req() req: Request, @CurrentUser() user: AuthUser, @ActorCtx() actor: Actor) {
+    this.requireSupabase();
+    const res = await fetch(`${this.env.SUPABASE_URL}/auth/v1/factors`, {
+      method: 'POST',
+      headers: this.userHeaders(req),
+      body: JSON.stringify({ factor_type: 'totp', friendly_name: `HAAB ${new Date().toISOString()}` }),
+    });
+    if (!res.ok) throw new BadRequestException('Could not start MFA enrolment');
+    const f: any = await res.json();
+    await this.audit.log(null, actor, 'auth.mfa_enroll_started', 'user', user.id);
+    return { factor_id: f.id, qr_svg: f.totp?.qr_code, secret: f.totp?.secret, uri: f.totp?.uri };
+  }
+
+  /** Completes enrolment or satisfies the second factor at sign-in. Returns a session upgraded to aal2. */
+  @AllowWithoutMfa()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('mfa/verify')
+  async mfaVerify(@Req() req: Request, @Body() body: unknown, @CurrentUser() user: AuthUser, @ActorCtx() actor: Actor) {
+    this.requireSupabase();
+    const { factor_id, code } = parse(z.object({ factor_id: z.string().uuid(), code: z.string().regex(/^\d{6}$/) }), body);
+    const headers = this.userHeaders(req);
+    const ch = await fetch(`${this.env.SUPABASE_URL}/auth/v1/factors/${factor_id}/challenge`, { method: 'POST', headers, body: '{}' });
+    if (!ch.ok) throw new BadRequestException('Could not start MFA challenge');
+    const { id: challenge_id }: any = await ch.json();
+    const vr = await fetch(`${this.env.SUPABASE_URL}/auth/v1/factors/${factor_id}/verify`, {
+      method: 'POST', headers, body: JSON.stringify({ challenge_id, code }),
+    });
+    if (!vr.ok) {
+      await this.audit.log(null, actor, 'auth.mfa_failed', 'user', user.id);
+      throw new UnauthorizedException('That code was not accepted');
+    }
+    const s: any = await vr.json();
+    await this.audit.log(null, actor, 'auth.mfa_verified', 'user', user.id);
+    return { access_token: s.access_token, refresh_token: s.refresh_token, expires_in: s.expires_in };
+  }
+
+  @Post('logout')
+  async logout(@Req() req: Request, @CurrentUser() user: AuthUser, @ActorCtx() actor: Actor) {
+    await this.audit.log(null, actor, 'auth.logout', 'user', user.id);
+    if (this.env.AUTH_MODE === 'supabase') {
+      await fetch(`${this.env.SUPABASE_URL}/auth/v1/logout`, { method: 'POST', headers: this.userHeaders(req) }).catch(() => undefined);
+    }
+    return { ok: true };
+  }
+
+  private requireSupabase() {
+    if (this.env.AUTH_MODE !== 'supabase') throw new BadRequestException('MFA is handled by Supabase Auth and is not available in development mode');
+  }
+  private userHeaders(req: Request) {
+    return { apikey: this.env.SUPABASE_ANON_KEY!, Authorization: req.headers.authorization!, 'Content-Type': 'application/json' };
+  }
+}

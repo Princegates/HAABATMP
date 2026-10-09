@@ -1,23 +1,26 @@
-/* HAAB brand tokens. Change the brand here and nowhere else. See docs/BRAND.md. */
+/* HAAB brand tokens, taken from the variables on haabaviation.com. Change the brand here and nowhere else. */
 :root {
-  --ink: #0c1013;
-  --ink-2: #11171e;
-  --slate: #1d272f;
-  --slate-line: #2a3640;
+  /* site palette, verbatim */
+  --ink: #0a0c0f;
+  --ink-2: #111418;
+  --ink-3: #181d24;
+  --gold: #b8966e;
+  --gold-2: #d4b896;
+  --cream: #e8e4dc;
+  --fog: #9ea8b4;
+  --line-dark: rgba(184, 150, 110, 0.18);
 
-  --gold: #b9966e;
-  --gold-hover: #a98558;
-  --gold-soft: #d0b898;
-  --gold-wash: #f4ede3;
-
-  --paper: #f6f4f0;
+  /* work-area palette derived from the same hues, for readable tables and forms */
+  --gold-hover: #a58459;
+  --gold-wash: #f5efe6;
+  --paper: #f7f5f1;
   --card: #ffffff;
-  --text: #1a2026;
-  --text-muted: #5b6670;
-  --line: #e2ddd4;
+  --text: #14181d;
+  --text-muted: #5a6470;
+  --line: #e3ded4;
 
   --ok: #2f6b4f;
-  --warn: #9a6a12;
+  --warn: #946212;
   --danger: #9b2c2c;
   --info: #2c5282;
 
@@ -25,6 +28,10 @@
   --font-label: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif;
   --font-body: 'Barlow', system-ui, -apple-system, 'Segoe UI', sans-serif;
 
+  /* button metrics copied from the site: 13px / 600 / 2.5px tracking, padding 13px 30px, square corners */
+  --btn-size: 13px;
+  --btn-weight: 600;
+  --btn-tracking: 2.5px;
   --radius: 0;
   --sidebar-w: 248px;
 }

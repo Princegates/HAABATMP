@@ -2,20 +2,22 @@
 
 Source: screenshot of https://haabaviation.com/ (home page hero), colours sampled from the pixels.
 
-## Colour
-| Role | Value | Where it appears on the site |
+## Colour (verbatim from the site's CSS variables)
+| Token | Value | Use |
 |---|---|---|
-| Gold (primary action) | `#b9966e` | Buttons ("Get in touch", "Our services") |
-| Light gold (accent text) | `#d0b898` | Italic emphasis in headings ("African Aviation") |
-| Ink / near-black | `#0c1013` | Bottom stats bar, header overlay |
-| Slate | `#1d272f` | Hero shadows, panels |
-| White | `#ffffff` | Headings, logo |
-| Muted text | about 70% white | Body copy on dark |
+| ink | `#0a0c0f` | Page background, sidebar, top bar |
+| ink-2 / ink-3 | `#111418` / `#181d24` | Raised dark panels |
+| gold | `#b8966e` | Primary buttons, active states |
+| gold-2 | `#d4b896` | Accent text, italic emphasis |
+| cream | `#e8e4dc` | Body text on dark |
+| fog | `#9ea8b4` | Muted text on dark |
+| line | `rgba(184,150,110,.18)` | Hairlines on dark |
 
-## Typography (inferred from the screenshot; confirm against the site's CSS)
-- Display: a light high-contrast serif in the Cormorant family, with italic gold emphasis.
-- Labels, navigation, buttons: a condensed sans in the Barlow Condensed style, uppercase, wide letter-spacing, semibold.
-- Body: a light humanist sans in the Barlow style.
+## Typography (confirmed from the site)
+- Display: **Cormorant Garamond**, light (300), with italic gold emphasis. Stat numbers are 36px / 300.
+- Labels, navigation, buttons: **Barlow Condensed**, uppercase, 600 weight, 13px, 2.5px letter-spacing.
+- Body: **Barlow**.
+- Buttons: padding 13px 30px, square corners. Gold = solid `#b8966e` with ink text. Outline = 1px `rgba(232,228,220,.3)`.
 
 ## Shape and tone
 - Square corners. No rounded pills, no shadows beyond a faint lift.
@@ -28,3 +30,22 @@ Source: screenshot of https://haabaviation.com/ (home page hero), colours sample
 The marketing site is dark and cinematic, which is hard to read for dense tables. The platform therefore uses
 a dark ink sidebar and top bar with gold accents (matching the site), and a warm off-white work area for
 tables and forms. Headings use the serif; labels and buttons use the condensed uppercase style.
+
+## Logo (seen in chat, file not yet in the repo)
+- Colour version: deep navy winged emblem with globe and gear, "HAAB AVIATION" in thin capitals,
+  "CONSULTANCY SERVICES LTD." in bold capitals. Intended for light backgrounds (certificates, invoices, emails,
+  the work area header).
+- The website uses a white version on dark. The dark sidebar and login screen need that white version.
+- Legal name for documents: **HAAB Aviation Consultancy Services Ltd.**
+- The site uses ONE file, `haab-logo.png`, and makes it white on dark backgrounds with the CSS filter
+  `brightness(0) invert(1)` at height 56px. The platform does the same, so only that one file is needed:
+  save it as `apps/web/public/brand/haab-logo.png`.
+- Until the files arrive the UI shows a plain text wordmark. The logo is never redrawn or recoloured by hand.
+
+## About HAAB (from the site, for copy and seed data)
+- Ghana-based, incorporated July 2019 (Reg. CS146472019). Serves civil aviation authorities, airport operators,
+  government agencies and private investors across Africa. Anchored in ICAO SARPs, ACI and IATA standards.
+- Training & Capacity Building offer: Airport SMS; Emergency Planning & Response; Airside Operations & Management;
+  Ground Handling Operations; Security Screening (ICAO Annex 17); ICAO & ACI Certification Preparation;
+  ARFF & AVSEC; Wildlife Hazard Management.
+- Voice: plain, formal, outcome-focused ("From strategy to delivery").

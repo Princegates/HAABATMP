@@ -627,7 +627,7 @@ begin
 end $$;
 
 insert into settings (key, value) values
-  ('organization', '{"name":"HAAB","address":"","email":"","phone":"","website":""}'),
+  ('organization', '{"name":"HAAB Aviation Consultancy Services Ltd.","address":"","email":"","phone":"","website":""}'),
   ('finance', '{"currency":"GHS","tax_rate":0,"require_payment_before_confirmation":false,"invoice_due_days":14}'),
   ('training', '{"default_pass_mark":70,"default_min_attendance_pct":80,"certificate_expiring_soon_days":60,"enforce_maker_checker":true}'),
   ('notifications', '{"email_enabled":true,"expiry_reminder_days":[90,60,30]}');
