@@ -271,6 +271,26 @@ export class CoursesController {
        on conflict (trainee_id, material_id) do update set status = excluded.status, updated_at = now() returning *`, [id, u.id, status]);
   }
 
+  /** The modules and materials of a course the trainee is enrolled on, with their own progress on each. */
+  @Get('my/learning/:courseId')
+  @Require('courses:read')
+  async myCourse(@CurrentUser() u: AuthUser, @Param('courseId') courseId: string) {
+    parse(uuid, courseId);
+    if (u.role !== 'trainee') throw new BadRequestException('Only trainees have learning progress');
+    const enrolled = await this.db.one(
+      `select 1 from enrollments e join programmes p on p.id = e.programme_id where e.trainee_id = $1 and p.course_id = $2 and e.status in ('confirmed','completed') limit 1`, [u.id, courseId]);
+    if (!enrolled) throw new NotFoundException();
+    const course = await this.db.one('select id, code, title from courses where id = $1', [courseId]);
+    const modules = await this.db.query(
+      `select m.id, m.title, m.description,
+              coalesce(json_agg(json_build_object('id', l.id, 'title', l.title, 'kind', l.kind, 'url', l.url, 'required', l.required, 'status', coalesce(mp.status, 'not_started')) order by l.position)
+                       filter (where l.id is not null), '[]') as materials
+         from course_modules m left join learning_materials l on l.module_id = m.id
+         left join material_progress mp on mp.material_id = l.id and mp.trainee_id = $1
+        where m.course_id = $2 group by m.id order by m.position, m.created_at`, [u.id, courseId]);
+    return { course, modules };
+  }
+
   /** Remaining learning requirements for the signed-in trainee. */
   @Get('my/learning')
   @Require('courses:read')

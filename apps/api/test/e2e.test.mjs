@@ -394,6 +394,20 @@ test('9. documents: type by content, malware hook, and who can read what', async
   assert.ok(audit.length >= 1, 'reading an ID document is audited');
 });
 
+test('9b. learning progress is private to the enrolled trainee', async () => {
+  const a1 = api(S.tok_a1);
+  const mod = ok(await a1.post(`/courses/${S.course.id}/modules`, { title: 'Module one', position: 0 }));
+  const mat = ok(await a1.post(`/modules/${mod.id}/materials`, { title: 'Course notes', kind: 'link', url: 'https://example.com/notes', required: true }));
+  const mine = ok(await api(S.tok_T1).get(`/my/learning/${S.course.id}`));
+  assert.equal(mine.modules[0].materials[0].status, 'not_started');
+  ok(await api(S.tok_T1).put(`/materials/${mat.id}/progress`, { status: 'completed' }));
+  assert.equal(ok(await api(S.tok_T1).get(`/my/learning/${S.course.id}`)).modules[0].materials[0].status, 'completed');
+  assert.equal(ok(await api(S.tok_T2).get(`/my/learning/${S.course.id}`)).modules[0].materials[0].status, 'not_started', 'another trainee has their own progress');
+  refused(await api(S.tok_T3).get(`/my/learning/${S.course.id}`), 404, 'a trainee who is not enrolled cannot open it');
+  refused(await api(S.tok_a1).get(`/my/learning/${S.course.id}`), 400, 'staff have no learning progress');
+  refused(await api(S.tok_T3).put(`/materials/${mat.id}/progress`, { status: 'completed' }), 404, 'nor record progress on it');
+});
+
 test('10. profile ID numbers are encrypted at rest and masked on screen', async () => {
   ok(await api(S.tok_a1).put(`/users/${S.t1}/profile`, { id_number: 'GHA-123456789-0', id_type: 'Ghana Card', aviation_role: 'Ramp agent' }));
   const stored = (await db.query('select id_number_enc from trainee_profiles where user_id = $1', [S.t1])).rows[0].id_number_enc;
@@ -489,6 +503,9 @@ test('13. reports, dashboards, search and notifications work for every role', as
   }
   assert.ok(!ok(await api(S.tok_instr).get('/dashboard')).tiles.some((t) => t.key === 'revenue'), 'instructors see no revenue');
   assert.ok(!ok(await api(S.tok_T1).get('/dashboard')).tiles.some((t) => t.key === 'revenue'));
+  const shown = ok(await api(S.tok_a1).get(`/programmes/${S.prog.id}`));
+  assert.equal(Number(shown.confirmed_count), 3, 'a completed programme still counts the places that were held');
+  assert.equal(ok(await api(S.tok_fin).get(`/invoices/${(await db.query('select id from invoices where trainee_id = $1', [S.t1])).rows[0].id}`)).trainee_name, `trainee1 ${run}`, 'an invoice says who is billed');
   const rep = ok(await api(S.tok_a1).get(`/reports/training?programme_id=${S.prog.id}`));
   assert.equal(rep.rows.length, 1); assert.equal(Number(rep.rows[0].enrolled), 3);
   const csv = await api(S.tok_a1).raw(`/reports/training?format=csv`);

@@ -16,6 +16,8 @@ async function forward(req: NextRequest, path: string[], token?: string) {
 async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   if (!['GET', 'HEAD'].includes(req.method) && !sameOrigin(req)) return NextResponse.json({ message: 'Cross-site request refused' }, { status: 403 });
   const { path } = await ctx.params;
+  // Sign-in, refresh and MFA go through /api/session so tokens only ever live in httpOnly cookies, never in page scripts.
+  if (/^auth\/(login|refresh|mfa)/.test(path.join('/'))) return NextResponse.json({ message: 'Not found' }, { status: 404 });
   let token = await accessToken();
   let res = await forward(req, path, token);
 

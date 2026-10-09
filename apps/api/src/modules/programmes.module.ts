@@ -122,7 +122,7 @@ export class ProgrammesController {
     const w = where.length ? `where ${where.join(' and ')}` : '';
     const data = await this.db.query(
       `select p.*, c.code as course_code, c.title as course_title, i.full_name as lead_instructor_name, o.name as organization_name,
-              (select count(*) from enrollments e where e.programme_id = p.id and e.status = 'confirmed') as confirmed_count,
+              (select count(*) from enrollments e where e.programme_id = p.id and e.status in ('confirmed','completed')) as confirmed_count,
               (select count(*) from enrollments e where e.programme_id = p.id and e.status = 'pending') as pending_count,
               (select count(*) from enrollments e where e.programme_id = p.id and e.status = 'waitlisted') as waitlist_count
          from programmes p join courses c on c.id = p.course_id
@@ -319,8 +319,8 @@ export class ProgrammesController {
     const p = await this.db.one<any>(
       `select p.*, c.code as course_code, c.title as course_title, c.pass_mark, c.min_attendance_pct, c.validity_months,
               i.full_name as lead_instructor_name, o.name as organization_name,
-              (select count(*) from enrollments e where e.programme_id = p.id and e.status = 'confirmed') as confirmed_count,
-              p.capacity - (select count(*) from enrollments e where e.programme_id = p.id and e.status in ('confirmed','pending')) as seats_left
+              (select count(*) from enrollments e where e.programme_id = p.id and e.status in ('confirmed','completed')) as confirmed_count,
+              p.capacity - (select count(*) from enrollments e where e.programme_id = p.id and e.status in ('confirmed','pending','completed')) as seats_left
          from programmes p join courses c on c.id = p.course_id
          left join users i on i.id = p.lead_instructor_id left join organizations o on o.id = p.organization_id where p.id = $1`, [id]);
     if (!p) throw new NotFoundException();

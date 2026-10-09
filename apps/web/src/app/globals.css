@@ -165,7 +165,7 @@ input[disabled], select[disabled], textarea[disabled] { opacity: 0.6; }
 }
 .table td { padding: 11px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .table tbody tr:hover { background: var(--accent-wash); }
-.table td.num, .table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.table td.num, .table th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .table .actions { text-align: right; white-space: nowrap; }
 .empty { padding: 48px 20px; text-align: center; color: var(--text-muted); }
 .empty h3 { color: var(--text); margin-bottom: 6px; }

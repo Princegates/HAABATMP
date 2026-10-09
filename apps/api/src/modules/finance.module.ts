@@ -56,7 +56,10 @@ export class FinanceController {
       this.db.query('select * from invoice_items where invoice_id = $1 order by description', [id]),
       this.db.query(`select p.*, x.full_name as recorded_by_name from payments p join users x on x.id = p.recorded_by where p.invoice_id = $1 order by p.received_at`, [id]),
     ]);
-    return { ...inv, items, payments };
+    const who = await this.db.one<any>(
+      `select o.name as organization_name, t.full_name as trainee_name, p.code as programme_code from invoices i left join organizations o on o.id = i.organization_id
+         left join users t on t.id = i.trainee_id left join programmes p on p.id = i.programme_id where i.id = $1`, [id]);
+    return { ...inv, ...who, items, payments };
   }
 
   @Post('invoices')

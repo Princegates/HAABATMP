@@ -91,7 +91,7 @@ export function HalfDonut({ data, height = 190 }: { data: { label: string; value
     <div>
       <svg className="chart" viewBox="0 0 320 170" style={{ maxHeight: height }} role="img" aria-label="Breakdown">
         {arcs.map((a) => <path key={a.i} d={a.path} fill={COLORS[a.i % COLORS.length]} stroke="var(--surface)" strokeWidth="2" opacity={hover === null || hover === a.i ? 1 : 0.5} onMouseEnter={() => setHover(a.i)} onMouseLeave={() => setHover(null)}><title>{`${a.d.label}: ${a.d.value}`}</title></path>)}
-        <text x={cx} y={cy - 18} textAnchor="middle" style={{ fontFamily: 'var(--font-display)', fontSize: 30, fill: 'var(--text)' }}>{hover !== null ? rows[hover].value : total}</text>
+        <text x={cx} y={cy - 18} textAnchor="middle" style={{ fontFamily: 'var(--font-display)', fontSize: 30, fill: 'var(--text)', fontVariantNumeric: 'lining-nums', fontFeatureSettings: "'lnum' 1" }}>{hover !== null ? rows[hover].value : total}</text>
         <text x={cx} y={cy - 2} textAnchor="middle">{hover !== null ? rows[hover].label.slice(0, 22) : 'in total'}</text>
       </svg>
       <Legend items={rows.map((d, i) => ({ label: `${d.label} (${d.value})`, color: COLORS[i % COLORS.length] }))} />
