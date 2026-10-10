@@ -16,8 +16,11 @@ async function forward(req: NextRequest, path: string[], token?: string) {
 async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   if (!['GET', 'HEAD'].includes(req.method) && !sameOrigin(req)) return NextResponse.json({ message: 'Cross-site request refused' }, { status: 403 });
   const { path } = await ctx.params;
+  // Only plain path segments are forwarded: no dot segments, empty segments, encoded separators or control characters.
+  if (path.some((seg) => !/^[A-Za-z0-9._~@:+=,-]+$/.test(seg) || seg === '.' || seg === '..')) return NextResponse.json({ message: 'Not found' }, { status: 404 });
   // Sign-in, refresh and MFA go through /api/session so tokens only ever live in httpOnly cookies, never in page scripts.
-  if (/^auth\/(login|refresh|mfa)/.test(path.join('/'))) return NextResponse.json({ message: 'Not found' }, { status: 404 });
+  // The API's router ignores letter case, so this check must too (AUTH/login reaches the same handler as auth/login).
+  if (/^auth\/(login|refresh|mfa)/i.test(path.join('/'))) return NextResponse.json({ message: 'Not found' }, { status: 404 });
   let token = await accessToken();
   let res = await forward(req, path, token);
 
