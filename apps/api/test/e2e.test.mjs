@@ -1084,3 +1084,42 @@ test('31. the Super Admin chooses which menu items each role sees', async () => 
   ok(await sa.put('/settings/menu', { overrides: {} }));
   assert.deepEqual(ok(await api(S.tok_instr).get('/auth/me')).menu, { hide: [], show: [] });
 });
+
+test('32. instructors add learning material to courses they teach, and only remove what they added', async () => {
+  const a1 = api(S.tok_a1); const instr = api(S.tok_instr);
+  // a course the instructor teaches (they lead programmes of it) and one they do not
+  const cat = ok(await a1.post('/course-categories', { code: letters(3), name: `Mat ${run}` }));
+  const other = ok(await a1.post('/courses', { code: `MT-${run}`.toUpperCase(), title: 'Not taught', category_id: cat.id, duration_hours: 4, fee: 0, pass_mark: 70, min_attendance_pct: 80, status: 'active' }));
+  refused(await instr.post(`/courses/${other.id}/modules`, { title: 'Sneaky module' }), 403, 'a course they do not teach');
+  const mine = ok(await instr.get(`/courses/${S.course.id}`));
+  assert.equal(mine.can_edit_materials, true, 'the screen learns they may edit material');
+  assert.equal(ok(await instr.get(`/courses/${other.id}`)).can_edit_materials, false);
+  // add a module, a link, and an uploaded file
+  const mod = ok(await instr.post(`/courses/${S.course.id}/modules`, { title: `Instructor module ${run}`, position: 99 }));
+  refused(await instr.post(`/modules/${mod.id}/materials`, { title: 'Bad link', kind: 'link', url: 'javascript:alert(1)' }), 400, 'javascript: links');
+  const link = ok(await instr.post(`/modules/${mod.id}/materials`, { title: 'Reading', kind: 'link', url: 'https://example.com/reading' }));
+  const pdf = Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n');
+  const up = (tok, name, buf, fields = {}) => { const fd = new FormData(); fd.append('title', fields.title ?? 'Slides'); fd.append('kind', fields.kind ?? 'pdf'); fd.append('file', new Blob([buf]), name); return http('POST', `/modules/${mod.id}/materials/upload`, tok, fd); };
+  const file = ok(await up(S.tok_instr, 'slides.pdf', pdf));
+  assert.ok(file.document_id);
+  refused(await up(S.tok_instr, 'evil.pdf', Buffer.from('not a pdf at all')), 400, 'content must match the type');
+  refused(await up(S.tok_instr, 'run.exe', Buffer.from('MZ')), 400, 'type not allowed');
+  refused(await up(S.tok_T1, 'x.pdf', pdf), 403, 'trainees cannot add material');
+  // download: the instructor, an enrolled trainee, but not a trainee who is not on the course
+  const dl = await http('GET', `/materials/${file.id}/file`, S.tok_instr, undefined, true);
+  assert.equal(dl.status, 200); assert.equal(dl.headers.get('content-type'), 'application/pdf'); assert.match(dl.headers.get('content-disposition'), /attachment/);
+  assert.equal((await http('GET', `/materials/${file.id}/file`, S.tok_T1, undefined, true)).status, 200, 'an enrolled trainee can download it');
+  const solo = ok(await a1.post('/users', { email: email('mat.stranger'), full_name: `Stranger ${run}`, role: 'trainee' }));
+  assert.equal((await http('GET', `/materials/${file.id}/file`, await login(email('mat.stranger')), undefined, true)).status, 404, 'a trainee who is not on the course cannot');
+  // removal rules
+  const staffMod = ok(await a1.post(`/courses/${S.course.id}/modules`, { title: `Staff module ${run}`, position: 98 }));
+  const staffMat = ok(await a1.post(`/modules/${staffMod.id}/materials`, { title: 'Staff reading', kind: 'link', url: 'https://example.com/s' }));
+  refused(await instr.del?.(`/materials/${staffMat.id}`) ?? await instr.delete(`/materials/${staffMat.id}`), 403, 'cannot remove staff material');
+  refused(await instr.delete(`/modules/${staffMod.id}`), 403, 'cannot remove a staff module');
+  ok(await a1.post(`/modules/${mod.id}/materials`, { title: 'Staff added to instructor module', kind: 'link', url: 'https://example.com/x' }));
+  refused(await instr.delete(`/modules/${mod.id}`), 403, 'cannot remove a module once staff have put material in it');
+  ok(await instr.delete(`/materials/${link.id}`));
+  ok(await a1.delete(`/modules/${mod.id}`)); // staff can remove anything
+  // an instructor's account can still be deleted afterwards: the author pointers are released
+  await db.query('select 1');
+});

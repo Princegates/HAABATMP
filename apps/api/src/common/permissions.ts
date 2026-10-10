@@ -15,7 +15,7 @@ export type Permission =
   | 'courses:read' | 'courses:write'
   | 'programmes:read' | 'programmes:write'
   | 'enrollments:read' | 'enrollments:write'
-  | 'trainees:register'
+  | 'trainees:register' | 'materials:write'
   | 'attendance:read' | 'attendance:write'
   | 'questions:write' | 'assessments:read' | 'assessments:write' | 'attempts:mark'
   | 'results:read' | 'results:finalise' | 'results:override'
@@ -29,7 +29,7 @@ export type Permission =
 
 const ALL: Permission[] = [
   'users:read', 'users:write', 'orgs:read', 'orgs:write', 'courses:read', 'courses:write',
-  'programmes:read', 'programmes:write', 'enrollments:read', 'enrollments:write', 'trainees:register',
+  'programmes:read', 'programmes:write', 'enrollments:read', 'enrollments:write', 'trainees:register', 'materials:write',
   'attendance:read', 'attendance:write', 'questions:write', 'assessments:read', 'assessments:write',
   'attempts:mark', 'results:read', 'results:finalise', 'results:override',
   'certificates:read', 'certificates:issue', 'certificates:revoke',
@@ -48,7 +48,7 @@ export const PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
   super_admin: new Set(ALL),
   training_admin: new Set<Permission>([
     'users:read', 'users:write', 'orgs:read', 'orgs:write', 'courses:read', 'courses:write',
-    'programmes:read', 'programmes:write', 'enrollments:read', 'enrollments:write', 'trainees:register',
+    'programmes:read', 'programmes:write', 'enrollments:read', 'enrollments:write', 'trainees:register', 'materials:write',
     'attendance:read', 'attendance:write', 'questions:write', 'assessments:read', 'assessments:write',
     'attempts:mark', 'results:read', 'results:finalise', 'results:override',
     'certificates:read', 'certificates:issue', 'certificates:revoke',
@@ -56,7 +56,7 @@ export const PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     'compliance:read', 'compliance:write', 'reports:read', 'settings:read',
   ]),
   instructor: new Set<Permission>([
-    'courses:read', 'programmes:read', 'enrollments:read', 'trainees:register', 'attendance:read', 'attendance:write',
+    'courses:read', 'programmes:read', 'enrollments:read', 'trainees:register', 'materials:write', 'attendance:read', 'attendance:write',
     'questions:write', 'assessments:read', 'assessments:write', 'attempts:mark', 'results:read',
     'documents:read', 'documents:write', 'reports:read',
   ]),

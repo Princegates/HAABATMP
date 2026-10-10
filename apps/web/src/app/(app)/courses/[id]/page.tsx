@@ -1,10 +1,11 @@
 'use client';
 import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, useApi } from '@/lib/api';
+import { api, download, useApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Column, DataList } from '@/components/datalist';
 import { FormModal } from '@/components/form';
+import { AddMaterialModal } from '@/components/material-modal';
 import { ChecklistPicker } from '@/components/picker';
 import { useToast } from '@/components/toast';
 import { Badge, Card, ConfirmModal, ErrorNote, KV, Loading, PageHead, Tabs } from '@/components/ui';
@@ -16,7 +17,7 @@ const KINDS = ['video', 'pdf', 'presentation', 'document', 'audio', 'image', 'sc
 
 export default function CoursePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { can, is } = useAuth();
+  const { can, is, me } = useAuth();
   const toast = useToast();
   const router = useRouter();
   const [del, setDel] = useState(false);
@@ -31,7 +32,7 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
   const [removeModule, setRemoveModule] = useState<any | null>(null);
   if (course.error) return <ErrorNote error={course.error} />;
   if (!course.data) return <Loading />;
-  const c = course.data; const w = can('courses:write');
+  const c = course.data; const w = can('courses:write'); const wm = !!c?.can_edit_materials; const mine = (x: any) => w || (wm && x.created_by === me.id);
   const progs: Column<any>[] = [{ key: 'code', label: 'Programme', href: (p) => `/programmes/${p.id}` }, { key: 'start_date', label: 'Starts', render: (p) => date(p.start_date) }, { key: 'end_date', label: 'Ends', render: (p) => date(p.end_date) }, { key: 'confirmed_count', label: 'Confirmed', num: true }, { key: 'status', label: 'Status', render: (p) => <Badge value={p.status} /> }];
   return (
     <>
@@ -49,12 +50,12 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
       )}
       {tab === 'content' && (
         <div className="stack">
-          {w && <div><button className="btn sm" onClick={() => setAddModule(true)}>Add module</button></div>}
+          {wm && <div><button className="btn sm" onClick={() => setAddModule(true)}>Add module</button></div>}
           {c.modules.length === 0 && <div className="card empty"><h3>No modules yet</h3><p>Modules group the learning materials trainees work through.</p></div>}
           {c.modules.map((m: any) => (
-            <Card key={m.id} title={m.title} actions={w && <><button className="btn outline sm" onClick={() => setAddMaterial(m.id)}>Add material</button><button className="btn danger sm" onClick={() => setRemoveModule(m)}>Remove</button></>} flush>
+            <Card key={m.id} title={m.title} actions={wm && <><button className="btn outline sm" onClick={() => setAddMaterial(m.id)}>Add material</button>{mine(m) && <button className="btn danger sm" onClick={() => setRemoveModule(m)}>Remove</button>}</>} flush>
               {m.materials.length === 0 ? <div className="empty muted">No materials in this module.</div> : <table className="table"><tbody>{m.materials.map((l: any) => (
-                <tr key={l.id}><td><b style={{ fontWeight: 600 }}>{l.title}</b> {l.required && <Badge tone="neutral">Required</Badge>}</td><td>{label(l.kind)}</td><td>{l.url && /^https?:\/\//i.test(l.url) ? <a href={l.url} target="_blank" rel="noopener noreferrer">Open link</a> : 'Uploaded file'}</td>{w && <td className="actions"><button className="btn ghost sm" onClick={async () => { await api.del(`/materials/${l.id}`); course.reload(); }}>Remove</button></td>}</tr>))}</tbody></table>}
+                <tr key={l.id}><td><b style={{ fontWeight: 600 }}>{l.title}</b> {l.required && <Badge tone="neutral">Required</Badge>}</td><td>{label(l.kind)}</td><td>{l.url && /^https?:\/\//i.test(l.url) ? <a href={l.url} target="_blank" rel="noopener noreferrer">Open link</a> : <button className="btn ghost sm" onClick={() => download(`/materials/${l.id}/file`, l.title).catch(() => toast('Could not download', 'error'))}>Download file</button>}</td><td className="actions">{mine(l) && <button className="btn ghost sm" onClick={async () => { await api.del(`/materials/${l.id}`); course.reload(); }}>Remove</button>}</td>}</tr>))}</tbody></table>}
             </Card>
           ))}
         </div>
@@ -74,7 +75,7 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
       {removeModule && <ConfirmModal title={`Remove ${removeModule.title}?`} message="The module and its materials are removed from the course. Trainee progress on them is lost." danger confirmLabel="Remove" onClose={() => setRemoveModule(null)} onConfirm={async () => { await api.del(`/modules/${removeModule.id}`); toast('Module removed'); course.reload(); }} />}
       {edit && <FormModal title="Edit course" size="wide" fields={courseFields(cats)} initial={c} onClose={() => setEdit(false)} onSubmit={async (v) => { await api.patch(`/courses/${id}`, v); toast('Saved'); course.reload(); }} />}
       {addModule && <FormModal title="Add module" size="narrow" fields={[{ name: 'title', label: 'Title', required: true, full: true }, { name: 'description', label: 'Description', type: 'textarea', full: true }]} onClose={() => setAddModule(false)} onSubmit={async (v) => { await api.post(`/courses/${id}/modules`, { ...v, position: c.modules.length }); course.reload(); }} />}
-      {addMaterial && <FormModal title="Add learning material" fields={[{ name: 'title', label: 'Title', required: true }, { name: 'kind', label: 'Kind', type: 'select', required: true, options: KINDS }, { name: 'url', label: 'Link', type: 'url', required: true, full: true, help: 'A link to the video, document or SCORM package' }, { name: 'required', label: 'Trainees must complete this', type: 'checkbox', full: true }]} initial={{ kind: 'pdf', required: true }} onClose={() => setAddMaterial(null)} onSubmit={async (v) => { await api.post(`/modules/${addMaterial}/materials`, v); course.reload(); }} />}
+      {addMaterial && <AddMaterialModal moduleId={addMaterial} onClose={() => setAddMaterial(null)} onDone={() => course.reload()} />}
       {prereq && <FormModal title="Prerequisites" size="wide" fields={[]} onClose={() => setPrereq(null)} onSubmit={async () => { await api.put(`/courses/${id}/prerequisites`, { ids: prereq }); toast('Saved'); course.reload(); }}><ChecklistPicker items={allCourses.filter((o) => o.value !== id)} selected={prereq} onChange={setPrereq} placeholder="Search courses" /></FormModal>}
       {instr && <FormModal title="Authorised instructors" size="wide" fields={[]} onClose={() => setInstr(null)} onSubmit={async () => { await api.put(`/courses/${id}/instructors`, { ids: instr }); toast('Saved'); course.reload(); }}><ChecklistPicker items={instructors} selected={instr} onChange={setInstr} placeholder="Search instructors" /></FormModal>}
     </>

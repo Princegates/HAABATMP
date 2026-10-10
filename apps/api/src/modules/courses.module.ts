@@ -1,4 +1,13 @@
-import { BadRequestException, Body, ConflictException, Controller, Delete, Get, Module, NotFoundException, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, Inject, Module, NotFoundException, Param, Patch, Post, Put, Query, Res, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
+import { createHash } from 'node:crypto';
+import { memoryStorage } from 'multer';
+import { ENV, Env } from '../config';
+import { teachesCourse } from '../common/course-access';
+import { SettingsService } from '../common/settings.service';
+import { MalwareScanner, StorageService } from '../common/storage.service';
+import { inspectUpload } from '../common/upload-rules';
 import { z } from 'zod';
 import { Actor, AuthUser } from '../common/auth.types';
 import { AuditService } from '../common/audit.service';
@@ -45,7 +54,10 @@ const materialBody = z.object({
 
 @Controller()
 export class CoursesController {
-  constructor(private readonly db: Db, private readonly audit: AuditService) {}
+  constructor(
+    private readonly db: Db, private readonly audit: AuditService, private readonly storage: StorageService, private readonly scanner: MalwareScanner,
+    private readonly settings: SettingsService, @Inject(ENV) private readonly env: Env,
+  ) {}
 
   // ------------------------------------------------------------ categories
 
@@ -184,7 +196,8 @@ export class CoursesController {
       seesMaterials = !!(await this.db.one(
         `select 1 from enrollments e join programmes p on p.id = e.programme_id where p.course_id = $1 and e.trainee_id = $2 and e.status in ('confirmed','completed') limit 1`, [id, u.id]));
     }
-    return { ...course, prerequisites, instructors, modules: seesMaterials ? modules : modules.map((m: any) => ({ ...m, materials: [] })) };
+    const canEditMaterials = isStaff(u) || (u.role === 'instructor' && (await teachesCourse(this.db, u.id, id)));
+    return { ...course, prerequisites, instructors, can_edit_materials: canEditMaterials, modules: seesMaterials ? modules : modules.map((m: any) => ({ ...m, materials: [] })) };
   }
 
   @Post('courses')
@@ -268,51 +281,128 @@ export class CoursesController {
 
   // ------------------------------------------------------------ modules and materials
 
+  /** Staff manage every course's material. An instructor manages the material of courses they teach, and removes only what they added. */
+  private async assertMaterialsAccess(u: AuthUser, courseId: string) {
+    if (isStaff(u)) return;
+    if (u.role === 'instructor' && (await teachesCourse(this.db, u.id, courseId))) return;
+    throw new ForbiddenException('You can only add learning material to courses you teach');
+  }
+
   @Post('courses/:id/modules')
-  @Require('courses:write')
-  async addModule(@Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
+  @Require('courses:write', 'materials:write')
+  async addModule(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
     parse(uuid, id);
+    if (!(await this.db.one('select 1 from courses where id = $1', [id]))) throw new NotFoundException();
+    await this.assertMaterialsAccess(u, id);
     const d = parse(z.object({ title: z.string().trim().min(2).max(200), description: z.string().trim().max(2000).nullish(), position: z.number().int().min(0).default(0) }), body);
     return this.db.tx(async (q) => {
-      const row = await q.one('insert into course_modules (course_id, title, description, position) values ($1,$2,$3,$4) returning *', [id, d.title, d.description ?? null, d.position]);
+      const row = await q.one('insert into course_modules (course_id, title, description, position, created_by) values ($1,$2,$3,$4,$5) returning *', [id, d.title, d.description ?? null, d.position, u.id]);
       await this.audit.log(q, actor, 'course_module.create', 'course', id, null, row);
       return row;
     });
   }
 
   @Delete('modules/:id')
-  @Require('courses:write')
-  async deleteModule(@Param('id') id: string, @ActorCtx() actor: Actor) {
+  @Require('courses:write', 'materials:write')
+  async deleteModule(@CurrentUser() u: AuthUser, @Param('id') id: string, @ActorCtx() actor: Actor) {
     parse(uuid, id);
     return this.db.tx(async (q) => {
+      const m = await q.one<any>('select * from course_modules where id = $1 for update', [id]);
+      if (!m) throw new NotFoundException();
+      await this.assertMaterialsAccess(u, m.course_id);
+      if (!isStaff(u)) {
+        // an instructor removes their own module, and only while nobody else has put material in it
+        const others = await q.one(`select 1 from learning_materials where module_id = $1 and created_by is distinct from $2 limit 1`, [id, u.id]);
+        if (m.created_by !== u.id || others) throw new ForbiddenException('You can only remove modules and material you added yourself');
+      }
       const row = await q.one<any>('delete from course_modules where id = $1 returning *', [id]);
-      if (!row) throw new NotFoundException();
       await this.audit.log(q, actor, 'course_module.delete', 'course', row.course_id, row, null);
       return { ok: true };
     });
   }
 
   @Post('modules/:id/materials')
-  @Require('courses:write')
-  async addMaterial(@Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
+  @Require('courses:write', 'materials:write')
+  async addMaterial(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
     parse(uuid, id);
+    const mod = await this.db.one<any>('select course_id from course_modules where id = $1', [id]);
+    if (!mod) throw new NotFoundException();
+    await this.assertMaterialsAccess(u, mod.course_id);
     const d = parse(materialBody, body);
+    // a file attached by id must be one this person uploaded; staff may attach any
+    if (d.document_id && !isStaff(u) && !(await this.db.one('select 1 from documents where id = $1 and uploaded_by = $2', [d.document_id, u.id]))) throw new ForbiddenException('You can only attach files you uploaded');
     return this.db.tx(async (q) => {
       const row = await q.one(
-        'insert into learning_materials (module_id, title, kind, url, document_id, required, position) values ($1,$2,$3,$4,$5,$6,$7) returning *',
-        [id, d.title, d.kind, d.url ?? null, d.document_id ?? null, d.required, d.position]);
+        'insert into learning_materials (module_id, title, kind, url, document_id, required, position, created_by) values ($1,$2,$3,$4,$5,$6,$7,$8) returning *',
+        [id, d.title, d.kind, d.url ?? null, d.document_id ?? null, d.required, d.position, u.id]);
       await this.audit.log(q, actor, 'learning_material.create', 'learning_material', row.id, null, row);
       return row;
     });
   }
 
+  /** Upload a file and attach it as material in one step. The same type, size and virus checks as Documents apply. */
+  @Post('modules/:id/materials/upload')
+  @Require('courses:write', 'materials:write')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: Number(process.env.MAX_UPLOAD_MB ?? 25) * 1024 * 1024 + 1024, files: 1 } }))
+  async uploadMaterial(@CurrentUser() u: AuthUser, @Param('id') id: string, @UploadedFile() file: { originalname: string; size: number; buffer: Buffer } | undefined, @Body() body: unknown, @ActorCtx() actor: Actor) {
+    parse(uuid, id);
+    if (!file) throw new BadRequestException('Choose a file to upload');
+    const mod = await this.db.one<any>('select course_id from course_modules where id = $1', [id]);
+    if (!mod) throw new NotFoundException();
+    await this.assertMaterialsAccess(u, mod.course_id);
+    const d = parse(z.object({ title: z.string().trim().min(2).max(200), kind: z.enum(['video', 'pdf', 'presentation', 'document', 'audio', 'image', 'scorm']), required: z.enum(['true', 'false']).default('true') }), body);
+    const rules = await this.settings.get<{ allowed: string[]; max_mb: number }>('file_types');
+    const { ext, mime } = inspectUpload(file, rules, this.env.MAX_UPLOAD_MB);
+    if (!(await this.scanner.clean(file.buffer))) {
+      await this.audit.log(null, actor, 'document.rejected_malware', 'document', null, null, { filename: file.originalname });
+      throw new BadRequestException('The file was rejected by the virus scanner');
+    }
+    const safeName = file.originalname.replace(/[^\w.\- ]+/g, '_').slice(0, 150);
+    const key = `${new Date().getUTCFullYear()}/${crypto.randomUUID()}.${ext}`;
+    await this.storage.put(key, file.buffer, mime);
+    try {
+      return await this.db.tx(async (q) => {
+        const doc = await q.one<any>(
+          `insert into documents (category, filename, mime_type, size_bytes, sha256, storage_key, confidential, uploaded_by) values ('course_material',$1,$2,$3,$4,$5,false,$6) returning id`,
+          [safeName, mime, file.size, createHash('sha256').update(file.buffer).digest('hex'), key, u.id]);
+        const pos = await q.one<{ n: number }>('select count(*)::int n from learning_materials where module_id = $1', [id]);
+        const row = await q.one('insert into learning_materials (module_id, title, kind, document_id, required, position, created_by) values ($1,$2,$3,$4,$5,$6,$7) returning *', [id, d.title, d.kind, doc.id, d.required === 'true', pos!.n, u.id]);
+        await this.audit.log(q, actor, 'learning_material.create', 'learning_material', row.id, null, { ...row, filename: safeName });
+        return row;
+      });
+    } catch (e) { await this.storage.remove(key); throw e; }
+  }
+
+  /** Download an uploaded material: staff, auditors, instructors of the course, and trainees confirmed on a programme of it. */
+  @Get('materials/:id/file')
+  @Require('courses:read')
+  async materialFile(@CurrentUser() u: AuthUser, @Param('id') id: string, @Res({ passthrough: true }) res: any) {
+    parse(uuid, id);
+    const m = await this.db.one<any>(
+      `select l.id, d.storage_key, d.mime_type, d.filename, cm.course_id from learning_materials l join course_modules cm on cm.id = l.module_id join documents d on d.id = l.document_id where l.id = $1`, [id]);
+    if (!m) throw new NotFoundException();
+    let ok = isStaff(u) || u.role === 'auditor';
+    if (!ok && u.role === 'instructor') ok = await teachesCourse(this.db, u.id, m.course_id);
+    if (!ok && u.role === 'trainee') {
+      ok = !!(await this.db.one(`select 1 from enrollments e join programmes p on p.id = e.programme_id where p.course_id = $1 and e.trainee_id = $2 and e.status in ('confirmed','completed') limit 1`, [m.course_id, u.id]));
+    }
+    if (!ok) throw new NotFoundException();
+    const body = await this.storage.get(m.storage_key);
+    res.set({ 'Content-Type': m.mime_type, 'Content-Disposition': `attachment; filename="${String(m.filename).replace(/"/g, '')}"`, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store' });
+    return new StreamableFile(body);
+  }
+
   @Delete('materials/:id')
-  @Require('courses:write')
-  async deleteMaterial(@Param('id') id: string, @ActorCtx() actor: Actor) {
+  @Require('courses:write', 'materials:write')
+  async deleteMaterial(@CurrentUser() u: AuthUser, @Param('id') id: string, @ActorCtx() actor: Actor) {
     parse(uuid, id);
     return this.db.tx(async (q) => {
+      const l = await q.one<any>('select l.*, cm.course_id from learning_materials l join course_modules cm on cm.id = l.module_id where l.id = $1 for update of l', [id]);
+      if (!l) throw new NotFoundException();
+      await this.assertMaterialsAccess(u, l.course_id);
+      if (!isStaff(u) && l.created_by !== u.id) throw new ForbiddenException('You can only remove modules and material you added yourself');
       const row = await q.one('delete from learning_materials where id = $1 returning *', [id]);
-      if (!row) throw new NotFoundException();
       await this.audit.log(q, actor, 'learning_material.delete', 'learning_material', id, row, null);
       return { ok: true };
     });

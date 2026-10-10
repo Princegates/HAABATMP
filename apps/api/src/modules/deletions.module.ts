@@ -104,7 +104,7 @@ export class DeletionsController {
     for (const [t, c] of [['assessments', 'created_by'], ['courses', 'created_by'], ['programmes', 'created_by'], ['questions', 'created_by'], ['users', 'created_by'],
       ['attendance', 'marked_by'], ['exam_attempts', 'marked_by'], ['attempt_answers', 'marked_by'], ['invoices', 'created_by'], ['enrollments', 'confirmed_by'],
       ['enrollments', 'registered_by'], ['documents', 'uploaded_by'], ['integrations', 'updated_by'], ['settings', 'updated_by'], ['registration_requests', 'decided_by'],
-      ['registration_requests', 'user_id']]) {
+      ['registration_requests', 'user_id'], ['course_modules', 'created_by'], ['learning_materials', 'created_by']]) {
       await q.query(`update ${t} set ${c} = null where ${c} = $1`, [id]);
     }
     await q.query('delete from users where id = $1', [id]);

@@ -12,24 +12,11 @@ import { ActorCtx, CurrentUser, Require } from '../common/decorators';
 import { isStaff } from '../common/scope';
 import { SettingsService } from '../common/settings.service';
 import { MalwareScanner, StorageService } from '../common/storage.service';
+import { inspectUpload } from '../common/upload-rules';
 import { pageQuery, parse, uuid } from '../common/validation';
 
 const CATEGORIES = ['identification', 'certificate', 'licence', 'training_record', 'course_material', 'attendance', 'examination', 'instructor_qualification', 'financial', 'other'] as const;
 type Category = (typeof CATEGORIES)[number];
-
-// What each allowed type must look like on the inside. The browser's claimed type is never trusted.
-const TYPES: Record<string, { mime: string; check: (b: Buffer) => boolean }> = {
-  pdf: { mime: 'application/pdf', check: (b) => b.subarray(0, 5).toString('latin1') === '%PDF-' },
-  png: { mime: 'image/png', check: (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
-  jpg: { mime: 'image/jpeg', check: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
-  docx: { mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', check: zip },
-  xlsx: { mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', check: zip },
-  pptx: { mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', check: zip },
-  csv: { mime: 'text/csv', check: text },
-  txt: { mime: 'text/plain', check: text },
-};
-function zip(b: Buffer) { return b[0] === 0x50 && b[1] === 0x4b && (b[2] === 0x03 || b[2] === 0x05); }
-function text(b: Buffer) { return !b.subarray(0, Math.min(b.length, 8192)).includes(0); }
 
 /** Which categories each role may upload, and for whom. */
 const UPLOAD: Record<string, Category[]> = {
@@ -75,12 +62,7 @@ export class DocumentsController {
     if (!UPLOAD[u.role]?.includes(d.category)) throw new ForbiddenException('You cannot upload this kind of document');
 
     const rules = await this.settings.get<{ allowed: string[]; max_mb: number }>('file_types');
-    const max = Math.min(rules.max_mb, this.env.MAX_UPLOAD_MB) * 1024 * 1024;
-    if (file.size > max) throw new BadRequestException(`Files can be up to ${Math.floor(max / 1048576)} MB`);
-    const ext = (file.originalname.split('.').pop() ?? '').toLowerCase().replace('jpeg', 'jpg');
-    const type = TYPES[ext];
-    if (!type || !rules.allowed.includes(ext)) throw new BadRequestException(`This file type is not allowed. Allowed: ${rules.allowed.join(', ')}`);
-    if (!type.check(file.buffer)) throw new BadRequestException('The file content does not match its type');
+    const { ext, mime } = inspectUpload(file, rules, this.env.MAX_UPLOAD_MB);
     if (!(await this.scanner.clean(file.buffer))) {
       await this.audit.log(null, actor, 'document.rejected_malware', 'document', null, null, { filename: file.originalname });
       throw new BadRequestException('The file was rejected by the virus scanner');
@@ -98,13 +80,13 @@ export class DocumentsController {
 
     const safeName = file.originalname.replace(/[^\w.\- ]+/g, '_').slice(0, 150);
     const key = `${new Date().getUTCFullYear()}/${crypto.randomUUID()}.${ext}`;
-    await this.storage.put(key, file.buffer, type.mime);
+    await this.storage.put(key, file.buffer, mime);
     try {
       return await this.db.tx(async (q) => {
         const row = await q.one<any>(
           `insert into documents (category, filename, mime_type, size_bytes, sha256, storage_key, owner_user_id, organization_id, confidential, uploaded_by)
            values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id, category, filename, mime_type, size_bytes, created_at`,
-          [d.category, safeName, type.mime, file.size, createHash('sha256').update(file.buffer).digest('hex'), key, ownerId, orgId, d.confidential === 'true', u.id]);
+          [d.category, safeName, mime, file.size, createHash('sha256').update(file.buffer).digest('hex'), key, ownerId, orgId, d.confidential === 'true', u.id]);
         await this.audit.log(q, actor, 'document.upload', 'document', row.id, null, { category: d.category, filename: safeName, owner_user_id: ownerId });
         return row;
       });
