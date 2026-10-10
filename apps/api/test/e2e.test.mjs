@@ -1043,3 +1043,19 @@ test('29. to-do lists and the programme close-out checklist', async () => {
   const other = ok(await a1.post('/programmes', { course_id: S.course.id, start_date: day(72), end_date: day(73), capacity: 5, fee: 0 }));
   refused(await instr.get(`/programmes/${other.id}/closeout`), 404, 'an instructor who does not teach it');
 });
+
+test('30. instructors are never shown what a place costs, anywhere', async () => {
+  const instr = api(S.tok_instr); const a1 = api(S.tok_a1);
+  const hasFee = (v) => JSON.stringify(v).includes('"fee"');
+  // staff and trainees still see fees (a trainee pays them)
+  assert.ok(hasFee(ok(await a1.get('/courses?limit=5'))), 'staff see course fees');
+  const prog = ok(await a1.get('/programmes?limit=5')).data[0];
+  assert.ok(hasFee(ok(await a1.get(`/programmes/${prog.id}`))), 'staff see programme fees');
+  // an instructor sees none, on any route
+  for (const path of ['/courses?limit=50', `/courses/${S.course.id}`, '/programmes?limit=50', '/enrollments?limit=50', '/calendar', '/trainees/register-options']) {
+    const r = await instr.get(path);
+    if (r.status === 200) assert.ok(!hasFee(r.body), `${path} must not carry a fee for an instructor`);
+  }
+  const mine = ok(await instr.get('/programmes?limit=50')).data.find((p) => p.lead_instructor_id === S.instr);
+  if (mine) assert.ok(!hasFee(ok(await instr.get(`/programmes/${mine.id}`))), 'a programme the instructor leads shows no fee');
+});

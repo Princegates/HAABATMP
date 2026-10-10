@@ -12,7 +12,7 @@ import { money, label } from '@/lib/format';
 import { useCategoryOptions } from '@/lib/options';
 
 function Inner() {
-  const { can } = useAuth();
+  const { can, is } = useAuth();
   const toast = useToast();
   const params = useSearchParams();
   const cats = useCategoryOptions();
@@ -22,7 +22,7 @@ function Inner() {
   useEffect(() => { if (params.get('new') && can('courses:write')) setForm(true); }, [params, can]);
   const columns: Column<any>[] = [
     { key: 'code', label: 'Code', render: (c) => <span className="mono">{c.code}</span>, href: (c) => `/courses/${c.id}` }, { key: 'title', label: 'Course', render: (c) => <b style={{ fontWeight: 600 }}>{c.title}</b> }, { key: 'category_name', label: 'Category' },
-    { key: 'duration_hours', label: 'Hours', num: true }, { key: 'fee', label: 'Fee', num: true, render: (c) => money(c.fee, c.currency) }, { key: 'validity_months', label: 'Valid for', render: (c) => (c.validity_months ? `${c.validity_months} months` : 'No expiry') },
+    { key: 'duration_hours', label: 'Hours', num: true }, ...(is('instructor') ? [] : [{ key: 'fee', label: 'Fee', num: true, render: (c: any) => money(c.fee, c.currency) }]), { key: 'validity_months', label: 'Valid for', render: (c) => (c.validity_months ? `${c.validity_months} months` : 'No expiry') },
     { key: 'status', label: 'Status', render: (c) => <Badge value={c.status} /> },
   ];
   return (

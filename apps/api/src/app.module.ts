@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { FeeHidingInterceptor } from './common/fee-hiding.interceptor';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthGuard } from './common/auth.guard';
 import { CoreModule } from './common/core.module';
@@ -37,6 +38,7 @@ import { WorkflowModule } from './modules/workflow.module';
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useExisting: AuthGuard },
+    { provide: APP_INTERCEPTOR, useClass: FeeHidingInterceptor },
   ],
 })
 export class AppModule {}

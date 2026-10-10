@@ -16,7 +16,7 @@ const KINDS = ['video', 'pdf', 'presentation', 'document', 'audio', 'image', 'sc
 
 export default function CoursePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { can } = useAuth();
+  const { can, is } = useAuth();
   const toast = useToast();
   const router = useRouter();
   const [del, setDel] = useState(false);
@@ -42,7 +42,7 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
       <Tabs value={tab} onChange={setTab} tabs={[{ key: 'overview', label: 'Overview' }, { key: 'content', label: 'Modules and materials', count: c.modules.length }, { key: 'requirements', label: 'Requirements' }, { key: 'programmes', label: 'Programmes' }]} />
       {tab === 'overview' && (
         <div className="grid c2">
-          <Card title="Rules"><KV items={[['Duration', `${c.duration_hours} hours`], ['Delivery', label(c.delivery_method)], ['Fee', money(c.fee, c.currency)], ['Capacity', c.capacity], ['Pass mark', `${c.pass_mark}%`], ['Minimum attendance', `${c.min_attendance_pct}%`], ['Certificate valid', c.validity_months ? `${c.validity_months} months` : 'No expiry']]} /></Card>
+          <Card title="Rules"><KV items={[['Duration', `${c.duration_hours} hours`], ['Delivery', label(c.delivery_method)], ...(is('instructor') ? [] : [['Fee', money(c.fee, c.currency)] as [string, any]]), ['Capacity', c.capacity], ['Pass mark', `${c.pass_mark}%`], ['Minimum attendance', `${c.min_attendance_pct}%`], ['Certificate valid', c.validity_months ? `${c.validity_months} months` : 'No expiry']]} /></Card>
           <Card title="Recognition"><KV items={[['Approved by', c.approving_body || 'Not recorded'], ['Reference', c.approval_reference], ['Approval expires', c.approval_expiry && date(c.approval_expiry)], ['Audience', c.target_audience]]} />{!c.approving_body && <div className="alert warn" style={{ marginTop: 12 }}>No approving body is recorded. Add one if this course is accredited or aligned to a standard.</div>}</Card>
           {c.description && <Card title="About this course"><p>{c.description}</p></Card>}{c.objectives && <Card title="Objectives"><p style={{ whiteSpace: 'pre-wrap' }}>{c.objectives}</p></Card>}
         </div>
