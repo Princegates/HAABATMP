@@ -9,6 +9,7 @@ import { Badge, PageHead } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { orgFields } from '@/lib/org';
 import { label } from '@/lib/format';
+import { DeleteButton } from '@/components/delete';
 
 function Inner() {
   const { can, is } = useAuth();
@@ -28,7 +29,7 @@ function Inner() {
         actions={can('orgs:write') && <button className="btn" onClick={() => setForm('new')}>New client</button>} />
       <DataList path="/organizations" columns={columns} refreshKey={tick} searchPlaceholder="Search organisations"
         filters={[{ name: 'status', label: 'Status', options: [{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }] }]}
-        actions={(o) => can('orgs:write') && <button className="btn outline sm" onClick={() => setForm(o)}>Edit</button>} empty={{ title: 'No clients yet', hint: 'Add the first organisation to start registering its people.' }} />
+        actions={(o) => can('orgs:write') && <span className="row" style={{ justifyContent: 'flex-end' }}><button className="btn outline sm" onClick={() => setForm(o)}>Edit</button><DeleteButton path={`/organizations/${o.id}?with_people=true`} what={o.name} goes="Its people go with it, with their registrations and unpaid invoices." onDone={() => setTick((t) => t + 1)} /></span>} empty={{ title: 'No clients yet', hint: 'Add the first organisation to start registering its people.' }} />
       {form && <FormModal title={form === 'new' ? 'New client' : `Edit ${form.name}`} size="wide" fields={orgFields} initial={form === 'new' ? { type: 'other', status: 'active' } : form} onClose={() => setForm(null)}
         onSubmit={async (v) => { form === 'new' ? await api.post('/organizations', v) : await api.patch(`/organizations/${form.id}`, v); toast('Saved'); setTick((t) => t + 1); }} />}
     </>

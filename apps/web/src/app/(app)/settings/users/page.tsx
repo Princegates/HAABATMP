@@ -8,6 +8,7 @@ import { Badge, Card, ConfirmModal, Tabs } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { date } from '@/lib/format';
 import { useOrgOptions } from '@/lib/options';
+import { DeleteButton } from '@/components/delete';
 
 const CREATABLE: Record<Role, Role[]> = {
   super_admin: ['super_admin', 'training_admin', 'instructor', 'trainee', 'org_admin', 'finance_officer', 'auditor'], training_admin: ['trainee', 'instructor', 'org_admin'],
@@ -48,6 +49,7 @@ export default function UsersPage() {
             {u.status !== 'suspended' && <button className="btn ghost sm" onClick={async () => { try { const r = await api.post(`/users/${u.id}/send-reset`); toast(r.note ?? 'Password reset link sent'); } catch (e) { toast((e as ApiError).message, 'error'); } }}>Reset password</button>}
             {u.id !== me.id && u.status !== 'suspended' && <button className="btn ghost sm" title="Use when the person has lost their phone" onClick={async () => { try { await api.post(`/users/${u.id}/reset-mfa`); toast('Two-step sign-in reset'); } catch (e) { toast((e as ApiError).message, 'error'); } }}>Reset two-step</button>}
             {u.id !== me.id && (u.status === 'suspended' ? <button className="btn outline sm" onClick={async () => { await api.post(`/users/${u.id}/reactivate`); toast('Account reactivated'); setTick((t) => t + 1); }}>Reactivate</button> : <button className="btn danger sm" onClick={() => setSuspend(u)}>Suspend</button>)}
+            {u.id !== me.id && <DeleteButton path={`/users/${u.id}`} what={u.full_name} goes="Their registrations, attendance and unpaid invoices go with them, and their sign-in is removed." onDone={() => setTick((t) => t + 1)} />}
           </span>
         )} />
       {form && <FormModal title={form === 'new' ? 'New user' : `Edit ${form.full_name}`} fields={fields(form === 'new')} initial={form === 'new' ? {} : form} onClose={() => setForm(null)}

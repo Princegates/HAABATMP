@@ -11,6 +11,7 @@ import { CertificatesModule } from './modules/certificates.module';
 import { ComplianceModule } from './modules/compliance.module';
 import { CoursesModule } from './modules/courses.module';
 import { DashboardModule } from './modules/dashboard.module';
+import { DeletionsModule } from './modules/deletions.module';
 import { DocumentsModule } from './modules/documents.module';
 import { EnrollmentsModule } from './modules/enrollments.module';
 import { FinanceModule } from './modules/finance.module';
@@ -30,7 +31,7 @@ import { UsersModule } from './modules/users.module';
     }),
     CoreModule, AuthModule, UsersModule, OrganizationsModule, CoursesModule, ProgrammesModule, EnrollmentsModule, AttendanceModule,
     AssessmentsModule, ResultsModule, CertificatesModule, FinanceModule, DocumentsModule, ComplianceModule, ReportsModule,
-    AuditModule, SettingsModule, DashboardModule,
+    AuditModule, SettingsModule, DashboardModule, DeletionsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

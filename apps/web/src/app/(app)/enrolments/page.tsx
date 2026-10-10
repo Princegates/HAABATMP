@@ -7,6 +7,7 @@ import { Badge, ConfirmModal, PageHead } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { date, label } from '@/lib/format';
 import { useOrgOptions } from '@/lib/options';
+import { DeleteButton } from '@/components/delete';
 
 export default function EnrolmentsPage() {
   const { can, is } = useAuth();
@@ -27,10 +28,11 @@ export default function EnrolmentsPage() {
       <DataList path="/enrollments" columns={columns} searchPlaceholder="Search trainee" extra={{}}
         filters={[{ name: 'status', label: 'Status', options: ['pending', 'confirmed', 'waitlisted', 'completed', 'cancelled'].map((s) => ({ value: s, label: label(s) })) }, ...(seesOrg ? [{ name: 'organization_id', label: 'Organisation', options: orgs }] : [])]}
         empty={{ title: 'No registrations yet' }}
-        actions={(e, reload) => !['cancelled', 'completed'].includes(e.status) && !is('instructor', 'auditor', 'finance_officer') && (
+        actions={(e, reload) => (!['cancelled', 'completed'].includes(e.status) || is('super_admin')) && !is('instructor', 'auditor', 'finance_officer') && (
           <span className="row" style={{ justifyContent: 'flex-end' }}>
             {is('super_admin', 'training_admin') && e.status === 'pending' && <button className="btn outline sm" onClick={async () => { try { await api.post(`/enrollments/${e.id}/confirm`, {}); toast('Place confirmed'); reload(); } catch (err) { toast((err as ApiError).message, 'error'); } }}>Confirm</button>}
-            <button className="btn ghost sm" onClick={() => setCancel({ row: e, reload })}>Cancel</button>
+            {!['cancelled', 'completed'].includes(e.status) && <button className="btn ghost sm" onClick={() => setCancel({ row: e, reload })}>Cancel</button>}
+            <DeleteButton path={`/enrollments/${e.id}`} what="this registration" goes="Their attendance, assessment attempts and unpaid invoice for this programme go with it." onDone={reload} />
           </span>)} />
       {cancel && <ConfirmModal title="Cancel this registration?" message={`${cancel.row.trainee_name} on ${cancel.row.programme_title}.`} askReason="Reason" danger confirmLabel="Cancel registration" onClose={() => setCancel(null)}
         onConfirm={async (reason) => { await api.post(`/enrollments/${cancel.row.id}/cancel`, { reason }); toast('Registration cancelled'); cancel.reload(); }} />}

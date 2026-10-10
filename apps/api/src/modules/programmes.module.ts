@@ -277,10 +277,11 @@ export class ProgrammesController {
 
   @Delete('sessions/:id')
   @Require('programmes:write')
-  async deleteSession(@Param('id') id: string, @ActorCtx() actor: Actor) {
+  async deleteSession(@CurrentUser() u: AuthUser, @Param('id') id: string, @ActorCtx() actor: Actor) {
     parse(uuid, id);
     return this.db.tx(async (q) => {
-      if (await q.one('select 1 from attendance where session_id = $1 limit 1', [id])) throw new ConflictException('Attendance has been recorded for this session, so it cannot be deleted');
+      // attendance is evidence, so staff cannot delete a session that has any; a Super Administrator can, and it is audited
+      if (u.role !== 'super_admin' && (await q.one('select 1 from attendance where session_id = $1 limit 1', [id]))) throw new ConflictException('Attendance has been recorded for this session, so it cannot be deleted');
       const row = await q.one('delete from sessions where id = $1 returning *', [id]);
       if (!row) throw new NotFoundException();
       await this.audit.log(q, actor, 'session.delete', 'session', id, row, null);

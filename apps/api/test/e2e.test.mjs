@@ -793,3 +793,50 @@ test('23. instructors can register trainees from an Excel list, on programmes th
   const csv = Buffer.from(`Full name,Email\nCsv Person ${tag},csv.${tag}@example.com\n`);
   assert.equal(ok(await upload(S.tok_instr, csv, { organization_id: S.orgA, commit: 'true' }, 'list.csv')).created, 1);
 });
+
+test('24. the Super Admin can delete what was added, but never the official record', async () => {
+  const sa = api(S.sa); const a1 = api(S.tok_a1);
+  // only a Super Admin reaches these routes
+  const org = ok(await sa.post('/organizations', { name: `Delete Org ${run}`, type: 'airport' }));
+  const tr = ok(await sa.post('/users', { email: email('del.trainee'), full_name: `Del Trainee ${run}`, role: 'trainee', organization_id: org.id }));
+  refused(await a1.delete(`/users/${tr.id}`), 403, 'training admins cannot delete users');
+  refused(await a1.delete(`/organizations/${org.id}`), 403, 'training admins cannot delete clients');
+  refused(await sa.delete(`/users/${S.sa_id ?? (await db.query('select id from users where lower(email)=lower($1)', [email('super')])).rows[0].id}`), 400, 'nobody deletes their own account');
+
+  // a trainee with a registration, attendance-free: the registration goes with them
+  const prog = ok(await a1.post('/programmes', { course_id: S.course.id, start_date: day(20), end_date: day(21), capacity: 5, fee: 0 }));
+  ok(await a1.post(`/programmes/${prog.id}/status`, { status: 'open_for_registration' }));
+  ok(await a1.post(`/programmes/${prog.id}/enrol`, { trainee_ids: [tr.id] }));
+  // the client still has people, so it is protected unless asked
+  refused(await sa.delete(`/organizations/${org.id}`), 409, 'client still has people');
+  ok(await sa.delete(`/users/${tr.id}`));
+  refused(await a1.get(`/users/${tr.id}`), 404, 'trainee is gone');
+  assert.equal((await db.query('select count(*)::int n from enrollments where trainee_id = $1', [tr.id])).rows[0].n, 0, 'their registration went too');
+
+  // a client together with its people
+  const t2 = ok(await sa.post('/users', { email: email('del.t2'), full_name: `Del T2 ${run}`, role: 'trainee', organization_id: org.id }));
+  ok(await sa.delete(`/organizations/${org.id}?with_people=true`));
+  refused(await a1.get(`/users/${t2.id}`), 404, 'their people went with the client');
+
+  // a programme with sessions and a registration goes whole
+  ok(await a1.post(`/programmes/${prog.id}/sessions`, { title: 'Day 1', starts_at: `${day(20)}T09:00:00Z`, ends_at: `${day(20)}T12:00:00Z` }));
+  ok(await sa.delete(`/programmes/${prog.id}`));
+  assert.equal((await db.query('select count(*)::int n from sessions where programme_id = $1', [prog.id])).rows[0].n, 0);
+
+  // the official record is never deleted: a trainee with a certificate, and the programme it came from
+  const cert = (await db.query('select id, trainee_id, programme_id from certificates limit 1')).rows[0];
+  if (cert) {
+    const u = await sa.delete(`/users/${cert.trainee_id}`);
+    refused(u, 409, 'trainee with a certificate');
+    assert.match(u.body.message, /official record/);
+    refused(await sa.delete(`/programmes/${cert.programme_id}`), 409, 'programme with a certificate');
+    assert.equal((await db.query('select count(*)::int n from certificates where id = $1', [cert.id])).rows[0].n, 1);
+  }
+  // staff who signed off records stay too
+  const fin = (await db.query('select finalised_by from results where finalised_by is not null limit 1')).rows[0];
+  if (fin) refused(await sa.delete(`/users/${fin.finalised_by}`), 409, 'staff who finalised results');
+
+  // the removals are in the audit log
+  const log = (await db.query(`select action from audit_logs where action in ('user.delete','organization.delete','programme.delete')`)).rows.map((r) => r.action);
+  for (const a of ['user.delete', 'organization.delete', 'programme.delete']) assert.ok(log.includes(a), `audit has ${a}`);
+});

@@ -8,6 +8,7 @@ import { ChecklistPicker } from '@/components/picker';
 import { useToast } from '@/components/toast';
 import { Badge, Card, ConfirmModal, ErrorNote, KV, Loading, Modal, PageHead } from '@/components/ui';
 import { dateTime, label } from '@/lib/format';
+import { DeleteButton } from '@/components/delete';
 
 export default function AssessmentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -32,6 +33,7 @@ export default function AssessmentPage({ params }: { params: Promise<{ id: strin
           {w && x.status === 'draft' && <button className="btn" onClick={() => setConfirm('publish')}>Publish</button>}
           {w && x.status === 'published' && <button className="btn outline" onClick={() => setConfirm('close')}>Close</button>}
           {can('attempts:mark') && x.status !== 'draft' && <><Link href={`/marking?assessment_id=${id}`} className="btn outline">Marking</Link><button className="btn" onClick={() => setConfirm('release')}>Release results</button></>}
+          <DeleteButton path={`/assessments/${id}`} what={x.title} size="" goes="Its questions list and every attempt taken on it go with it." onDone={() => { window.location.href = '/assessments'; }} />
         </>} />
       <div className="grid c2" style={{ marginBottom: 20 }}>
         <Card title="Settings"><KV items={[['Attempts allowed', x.max_attempts], ['Question order', x.randomize ? 'Shuffled for each trainee' : 'Fixed'], ['Results', x.release_mode === 'immediate' ? 'Shown as soon as marked' : 'Released by staff'], ['Opens', x.opens_at ? dateTime(x.opens_at) : 'Immediately'], ['Closes', x.closes_at ? dateTime(x.closes_at) : 'No deadline'], ['Total marks', total]]} /></Card>

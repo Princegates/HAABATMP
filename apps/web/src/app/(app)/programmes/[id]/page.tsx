@@ -11,6 +11,7 @@ import { Badge, Card, ConfirmModal, ErrorNote, KV, Loading, Modal, PageHead, Tab
 import { date, dateTime, fromLocalInput, label, money, pct, toLocalInput } from '@/lib/format';
 import { programmeFields } from '@/lib/programme-fields';
 import { useClassroomOptions, useInstructorOptions, useOrgOptions } from '@/lib/options';
+import { DeleteButton } from '@/components/delete';
 
 const NEXT: Record<string, { to: string; label: string; primary?: boolean }[]> = {
   draft: [{ to: 'open_for_registration', label: 'Open registration', primary: true }],
@@ -66,6 +67,7 @@ export default function ProgrammePage({ params }: { params: Promise<{ id: string
           {staff && !done && <button className="btn outline" onClick={() => setEdit(true)}>Edit</button>}
           {staff && NEXT[p.status]?.map((n) => <button key={n.to} className={`btn ${n.primary ? '' : 'outline'}`} onClick={() => move(n.to)}>{n.label}</button>)}
           {staff && !done && <button className="btn danger" onClick={() => setCancel(true)}>Cancel programme</button>}
+          <DeleteButton path={`/programmes/${id}`} what={p.code} size="" goes="Its sessions, registrations, attendance, assessments and unpaid invoices go with it." onDone={() => { window.location.href = '/programmes'; }} />
         </>} />
       <div className="grid c4" style={{ marginBottom: 20 }}>
         <Tile name="Confirmed" value={p.confirmed_count} total={p.capacity} /><Tile name="Places left" value={Math.max(0, p.seats_left)} total={p.capacity} tone={p.seats_left <= 0 ? 'warn' : undefined} />
