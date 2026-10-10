@@ -402,3 +402,20 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
   body { background: #fff; color: #000; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* to-do list and close-out checklist */
+.todo { list-style: none; margin: 0; padding: 0; }
+.todo li + li { border-top: 1px solid var(--border); }
+.todo a { display: flex; align-items: center; gap: 14px; padding: 12px 20px; color: inherit; text-decoration: none; }
+.todo a:hover { background: var(--accent-wash); }
+.todo .count { min-width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-weight: 600; border: 1px solid var(--border); }
+.todo .count.warn { color: var(--warn); border-color: var(--warn); }
+.todo .count.info { color: var(--info); border-color: var(--info); }
+.todo .text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.todo .go { font-size: 22px; opacity: .6; }
+.closeout { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.closeout li { display: flex; gap: 12px; align-items: flex-start; }
+.closeout .mark { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; flex: none; font-size: 13px; font-weight: 700; border: 1px solid var(--border); margin-top: 1px; }
+.closeout li.done .mark { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
+.closeout li.todo .mark { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
+.closeout li.waiting { opacity: .7; }

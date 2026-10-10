@@ -1004,3 +1004,42 @@ test('28. security fixes: partial updates, secrets, question bank scope, sealed 
   const inv = (await db.query(`select id from invoices where status in ('pending','partially_paid') limit 1`)).rows[0];
   if (inv) refused(await api(S.tok_fin).post(`/invoices/${inv.id}/payments`, { amount: 10.001, method: 'cash' }), 400, 'three decimal places');
 });
+
+test('29. to-do lists and the programme close-out checklist', async () => {
+  const sa = api(S.sa); const a1 = api(S.tok_a1); const instr = api(S.tok_instr);
+  // every role gets a list (possibly empty) and nobody else's numbers
+  for (const tok of [S.sa, S.tok_a1, S.tok_instr, S.tok_fin, S.tok_aa, S.tok_T1, S.tok_aud]) {
+    const r = ok(await api(tok).get('/dashboard/todo'));
+    assert.ok(Array.isArray(r.items));
+    for (const i of r.items) { assert.ok(i.label && i.href && i.count > 0 && ['warn', 'info'].includes(i.tone)); }
+  }
+  refused(await http('GET', '/dashboard/todo'), 401, 'signed-in only');
+  // close-out walks a programme from "not finished" to "done"
+  const prog = ok(await a1.post('/programmes', { course_id: S.course.id, start_date: day(70), end_date: day(71), lead_instructor_id: S.instr, capacity: 5, fee: 0 }));
+  ok(await a1.post(`/programmes/${prog.id}/status`, { status: 'open_for_registration' }));
+  const enrol = ok(await a1.post(`/programmes/${prog.id}/enrol`, { trainee_ids: [S.t1] }));
+  ok(await a1.post(`/enrollments/${enrol.enrolled[0].id}/confirm`, {}));
+  const q = ok(await a1.post('/questions', { course_id: S.course.id, type: 'true_false', prompt: `Closeout ${run}: sky is up.`, answer: true, marks: 1 }));
+  const asm = ok(await a1.post('/assessments', { course_id: S.course.id, programme_id: prog.id, title: `CO ${run}`, duration_minutes: 10, pass_mark: 50, max_attempts: 1 }));
+  ok(await a1.put(`/assessments/${asm.id}/questions`, { items: [{ question_id: q.id }] }));
+  ok(await a1.post(`/assessments/${asm.id}/publish`));
+  let co = ok(await a1.get(`/programmes/${prog.id}/closeout`));
+  assert.equal(co.next, 'start', 'a programme that has not started is told to start');
+  for (const s of ['registration_closed', 'ongoing']) ok(await a1.post(`/programmes/${prog.id}/status`, { status: s }));
+  assert.equal(ok(await a1.get(`/programmes/${prog.id}/closeout`)).next, 'complete');
+  const st = ok(await api(S.tok_T1).post(`/assessments/${asm.id}/start`));
+  ok(await api(S.tok_T1).put(`/attempts/${st.attempt.id}/answers`, { answers: { [q.id]: true } }));
+  ok(await api(S.tok_T1).post(`/attempts/${st.attempt.id}/submit`));
+  ok(await a1.post(`/programmes/${prog.id}/status`, { status: 'completed' }));
+  co = ok(await a1.get(`/programmes/${prog.id}/closeout`));
+  assert.equal(co.next, 'finalise'); assert.equal(co.counts.ready, 1); assert.equal(co.steps.find((x) => x.key === 'complete').state, 'done');
+  ok(await sa.post(`/programmes/${prog.id}/results/finalise-all`));
+  assert.equal(ok(await sa.get(`/programmes/${prog.id}/closeout`)).next, 'release');
+  ok(await sa.post(`/programmes/${prog.id}/results/release`));
+  co = ok(await sa.get(`/programmes/${prog.id}/closeout`));
+  assert.equal(co.next, 'done'); assert.equal(co.counts.released, 1);
+  // closeout is for people who can see results: trainees and an instructor who does not teach it cannot use it
+  refused(await api(S.tok_T1).get(`/programmes/${prog.id}/closeout`), 404, 'trainees');
+  const other = ok(await a1.post('/programmes', { course_id: S.course.id, start_date: day(72), end_date: day(73), capacity: 5, fee: 0 }));
+  refused(await instr.get(`/programmes/${other.id}/closeout`), 404, 'an instructor who does not teach it');
+});

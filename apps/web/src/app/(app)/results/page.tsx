@@ -22,7 +22,7 @@ export default function ResultsPage() {
     <>
       <PageHead title={is('trainee') ? 'My' : 'Training'} accent="results" subtitle={is('trainee') || is('org_admin') ? 'Official results appear here once HAAB has finalised and released them.' : 'Results across every programme. Open a programme to calculate, finalise and release them.'} />
       <DataList path="/results" columns={columns} searchPlaceholder="Search trainee"
-        filters={[{ name: 'status', label: 'Result', options: ['pass', 'fail', 'pending', 'absent', 'disqualified'].map((v) => ({ value: v, label: label(v) })) }, ...(seesOrg ? [{ name: 'organization_id', label: 'Organisation', options: orgs }] : [])]} empty={{ title: 'No results yet' }} />
+        filters={[{ name: 'status', label: 'Result', options: ['pass', 'fail', 'pending', 'absent', 'disqualified'].map((v) => ({ value: v, label: label(v) })) }, ...(seesOrg ? [{ name: 'organization_id', label: 'Organisation', options: orgs }] : [])]} empty={{ title: 'No results yet', hint: 'Results appear once a programme is completed. Open the programme and follow the checklist on its Results tab.' }} />
     </>
   );
 }

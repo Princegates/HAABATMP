@@ -52,7 +52,7 @@ export default function InvoicesPage() {
     <>
       <PageHead title="Invoices" subtitle="Raised automatically for each paid place, or manually for other work. Payments are recorded against an invoice by Finance." actions={can('invoices:write') && <button className="btn" onClick={() => setCreating(true)}>New invoice</button>} />
       <DataList path="/invoices" columns={columns} searchPlaceholder="Search invoice or client"
-        filters={[{ name: 'status', label: 'Status', options: ['pending', 'partially_paid', 'paid', 'refunded', 'cancelled'].map((v) => ({ value: v, label: label(v) })) }, ...(seesOrg ? [{ name: 'organization_id', label: 'Client', options: orgs }] : []), { name: 'overdue', label: 'Overdue', options: [{ value: 'true', label: 'Overdue only' }] }]} empty={{ title: 'No invoices yet' }} />
+        filters={[{ name: 'status', label: 'Status', options: ['pending', 'partially_paid', 'paid', 'refunded', 'cancelled'].map((v) => ({ value: v, label: label(v) })) }, ...(seesOrg ? [{ name: 'organization_id', label: 'Client', options: orgs }] : []), { name: 'overdue', label: 'Overdue', options: [{ value: 'true', label: 'Overdue only' }] }]} empty={{ title: 'No invoices yet', hint: 'An invoice is raised automatically when a place that carries a fee is registered. Use New invoice for anything else.' }} />
       {creating && <NewInvoice onClose={() => setCreating(false)} />}
     </>
   );

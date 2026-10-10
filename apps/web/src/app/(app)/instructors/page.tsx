@@ -23,7 +23,7 @@ export default function InstructorsPage() {
   return (
     <>
       <PageHead title="Instructors" subtitle="Employees and contract associates who deliver training. An instructor can only be scheduled for courses they are authorised for, and only while their accreditation is in date." actions={can('users:write') && <button className="btn" onClick={() => setAdding(true)}>Add instructor</button>} />
-      <DataList path="/users" extra={{ role: 'instructor' }} columns={columns} refreshKey={tick} searchPlaceholder="Search name or email" empty={{ title: 'No instructors yet' }} />
+      <DataList path="/users" extra={{ role: 'instructor' }} columns={columns} refreshKey={tick} searchPlaceholder="Search name or email" empty={{ title: 'No instructors yet', hint: 'Add the people who teach for HAAB, then schedule them on programmes.' }} />
       {adding && <FormModal title="Add instructor" fields={fields} initial={{ employment_type: 'associate' }} onClose={() => setAdding(false)}
         onSubmit={async (v) => { const { employment_type, accreditation_body, accreditation_expiry, specialties, ...base } = v; await api.post('/users', { ...base, role: 'instructor', instructor_profile: { employment_type, accreditation_body, accreditation_expiry, specialties } }); toast('Instructor added. They will receive an invitation.'); setTick((t) => t + 1); }} />}
     </>

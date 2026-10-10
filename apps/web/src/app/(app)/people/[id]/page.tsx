@@ -61,9 +61,9 @@ export default function PersonPage({ params }: { params: Promise<{ id: string }>
               )}
             </Card>
           )}
-          {tab === 'regs' && <DataList path="/enrollments" extra={{ trainee_id: id }} columns={regs} search={false} empty={{ title: 'No training yet' }} />}
-          {tab === 'certs' && <DataList path="/certificates" extra={{ trainee_id: id }} columns={certs} search={false} empty={{ title: 'No certificates yet' }} />}
-          {tab === 'docs' && <DataList path="/documents" extra={{ owner_user_id: id }} columns={docs} search={false} empty={{ title: 'No documents' }} actions={(d) => <button className="btn outline sm" onClick={() => download(`/documents/${d.id}/download`, d.filename)}>Download</button>} />}
+          {tab === 'regs' && <DataList path="/enrollments" extra={{ trainee_id: id }} columns={regs} search={false} empty={{ title: 'No training yet', hint: 'Register this person on a programme from the Programmes page.' }} />}
+          {tab === 'certs' && <DataList path="/certificates" extra={{ trainee_id: id }} columns={certs} search={false} empty={{ title: 'No certificates yet', hint: 'A certificate is issued once a result is finalised as a pass.' }} />}
+          {tab === 'docs' && <DataList path="/documents" extra={{ owner_user_id: id }} columns={docs} search={false} empty={{ title: 'No documents', hint: 'Upload their licences and identity documents.' }} actions={(d) => <button className="btn outline sm" onClick={() => download(`/documents/${d.id}/download`, d.filename)}>Download</button>} />}
         </div>
       </div>
       {edit && <FormModal title="Edit profile" size="wide" fields={fields} initial={{ ...(p ?? {}), id_number: '' }} onClose={() => setEdit(false)} onSubmit={async (v) => { const body = { ...v }; if (!body.id_number) delete body.id_number; await api.put(`/users/${id}/profile`, body); toast('Profile saved'); profile.reload(); }} />}

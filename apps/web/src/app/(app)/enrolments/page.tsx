@@ -27,7 +27,7 @@ export default function EnrolmentsPage() {
       <PageHead title={is('trainee') ? 'My' : 'Registrations'} accent={is('trainee') ? 'registrations' : undefined} subtitle={is('trainee') ? 'Programmes you have registered for and where each one stands.' : 'Who is booked on which programme, and whether their place and payment are confirmed.'} />
       <DataList path="/enrollments" columns={columns} searchPlaceholder="Search trainee" extra={{}}
         filters={[{ name: 'status', label: 'Status', options: ['pending', 'confirmed', 'waitlisted', 'completed', 'cancelled'].map((s) => ({ value: s, label: label(s) })) }, ...(seesOrg ? [{ name: 'organization_id', label: 'Organisation', options: orgs }] : [])]}
-        empty={{ title: 'No registrations yet' }}
+        empty={{ title: 'No registrations yet', hint: is('trainee') ? 'Open Browse programmes to register for training.' : 'Registrations appear here once people are registered on a programme.' }}
         actions={(e, reload) => (!['cancelled', 'completed'].includes(e.status) || is('super_admin')) && !is('instructor', 'auditor', 'finance_officer') && (
           <span className="row" style={{ justifyContent: 'flex-end' }}>
             {is('super_admin', 'training_admin') && e.status === 'pending' && <button className="btn outline sm" onClick={async () => { try { await api.post(`/enrollments/${e.id}/confirm`, {}); toast('Place confirmed'); reload(); } catch (err) { toast((err as ApiError).message, 'error'); } }}>Confirm</button>}

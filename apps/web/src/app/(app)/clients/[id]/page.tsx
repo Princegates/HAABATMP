@@ -29,10 +29,10 @@ export default function ClientPage({ params }: { params: Promise<{ id: string }>
         <div className="card card-body"><KV items={[['Contact', o.contact_name], ['Email', o.contact_email], ['Phone', o.contact_phone], ['Billing email', o.billing_email], ['Address', o.address], ['Outstanding', s ? money(s.outstanding_balance) : null]]} /></div>
         <div>
           <Tabs value={tab} onChange={setTab} tabs={[{ key: 'trainees', label: 'Trainees' }, { key: 'regs', label: 'Registrations' }, { key: 'certs', label: 'Certificates' }, ...(can('invoices:read') ? [{ key: 'inv', label: 'Invoices' }] : [])]} />
-          {tab === 'trainees' && <DataList path="/users" extra={{ role: 'trainee', organization_id: id }} columns={trainees} empty={{ title: 'No trainees yet' }} />}
-          {tab === 'regs' && <DataList path="/enrollments" extra={{ organization_id: id }} columns={regs} search={false} empty={{ title: 'No registrations yet' }} />}
-          {tab === 'certs' && <DataList path="/certificates" extra={{ organization_id: id }} columns={certs} empty={{ title: 'No certificates yet' }} />}
-          {tab === 'inv' && <DataList path="/invoices" extra={{ organization_id: id }} columns={inv} empty={{ title: 'No invoices' }} />}
+          {tab === 'trainees' && <DataList path="/users" extra={{ role: 'trainee', organization_id: id }} columns={trainees} empty={{ title: 'No trainees yet', hint: 'Add trainees from the Trainees page, or import an Excel list.' }} />}
+          {tab === 'regs' && <DataList path="/enrollments" extra={{ organization_id: id }} columns={regs} search={false} empty={{ title: 'No registrations yet', hint: 'Register this client\'s staff on a programme.' }} />}
+          {tab === 'certs' && <DataList path="/certificates" extra={{ organization_id: id }} columns={certs} empty={{ title: 'No certificates yet', hint: 'Certificates appear once results are finalised and released.' }} />}
+          {tab === 'inv' && <DataList path="/invoices" extra={{ organization_id: id }} columns={inv} empty={{ title: 'No invoices', hint: 'Invoices are raised when this client\'s places carry a fee.' }} />}
         </div>
       </div>
     </>

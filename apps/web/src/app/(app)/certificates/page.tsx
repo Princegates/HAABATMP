@@ -19,7 +19,7 @@ export default function CertificatesPage() {
     <>
       <PageHead title="Certificates" subtitle="Every certificate carries a unique number and a QR code anyone can use to confirm it is genuine. Expired and revoked certificates stay on record." />
       <DataList path="/certificates" columns={columns} searchPlaceholder="Search holder or number"
-        filters={[{ name: 'status', label: 'Status', options: ['valid', 'expiring_soon', 'expired', 'revoked'].map((v) => ({ value: v, label: label(v) })) }, ...(seesOrg ? [{ name: 'organization_id', label: 'Organisation', options: orgs }] : [])]} empty={{ title: 'No certificates yet' }} />
+        filters={[{ name: 'status', label: 'Status', options: ['valid', 'expiring_soon', 'expired', 'revoked'].map((v) => ({ value: v, label: label(v) })) }, ...(seesOrg ? [{ name: 'organization_id', label: 'Organisation', options: orgs }] : [])]} empty={{ title: 'No certificates yet', hint: 'A certificate is issued when a result is finalised as a pass. Check that the programme is completed and its results are finalised and released.' }} />
     </>
   );
 }

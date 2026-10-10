@@ -21,6 +21,7 @@ import { ReportsModule } from './modules/reports.module';
 import { ResultsModule } from './modules/results.module';
 import { SettingsModule } from './modules/settings.module';
 import { UsersModule } from './modules/users.module';
+import { WorkflowModule } from './modules/workflow.module';
 
 @Module({
   imports: [
@@ -31,7 +32,7 @@ import { UsersModule } from './modules/users.module';
     }),
     CoreModule, AuthModule, UsersModule, OrganizationsModule, CoursesModule, ProgrammesModule, EnrollmentsModule, AttendanceModule,
     AssessmentsModule, ResultsModule, CertificatesModule, FinanceModule, DocumentsModule, ComplianceModule, ReportsModule,
-    AuditModule, SettingsModule, DashboardModule, DeletionsModule,
+    AuditModule, SettingsModule, DashboardModule, DeletionsModule, WorkflowModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

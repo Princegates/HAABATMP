@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { BarChart, HalfDonut, LineChart } from '@/components/charts';
 import { Card, ErrorNote, Loading, PageHead, Tile } from '@/components/ui';
 import { dateTime } from '@/lib/format';
+import { TodoCard } from '@/components/todo';
 
 interface Dash {
   role: string;
@@ -38,6 +39,7 @@ export default function Dashboard() {
       {loading && !data && <Loading />}
       {data && (
         <div className="stack" style={{ gap: 20 }}>
+          <TodoCard />
           <div className="grid c4">{data.tiles.map((t) => <Tile key={t.key} name={t.label} value={t.value} total={t.total} unit={t.unit} tone={t.tone} />)}</div>
 
           {data.lists?.upcoming_sessions && (

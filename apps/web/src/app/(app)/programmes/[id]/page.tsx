@@ -10,6 +10,7 @@ import { useToast } from '@/components/toast';
 import { Badge, Card, ConfirmModal, ErrorNote, KV, Loading, Modal, PageHead, Tabs, Tile } from '@/components/ui';
 import { date, dateTime, fromLocalInput, label, money, pct, toLocalInput } from '@/lib/format';
 import { programmeFields } from '@/lib/programme-fields';
+import { CloseoutCard } from '@/components/closeout';
 import { useClassroomOptions, useInstructorOptions, useOrgOptions } from '@/lib/options';
 import { DeleteButton } from '@/components/delete';
 
@@ -87,7 +88,7 @@ export default function ProgrammePage({ params }: { params: Promise<{ id: string
       {tab === 'regs' && (
         <div className="stack">
           {(staff || is('org_admin')) && !done && <div><button className="btn" onClick={() => setEnrolOpen(true)}>{is('org_admin') ? 'Register employees' : 'Register trainees'}</button></div>}
-          <DataList path="/enrollments" extra={{ programme_id: id }} columns={regs} refreshKey={tick} searchPlaceholder="Search trainee" empty={{ title: 'Nobody registered yet' }}
+          <DataList path="/enrollments" extra={{ programme_id: id }} columns={regs} refreshKey={tick} searchPlaceholder="Search trainee" empty={{ title: 'Nobody registered yet', hint: is('trainee') ? 'Registered trainees are listed here.' : 'Use Register trainees above, or open registration so people can sign up.' }}
             actions={(e, reload) => !['cancelled', 'completed'].includes(e.status) && !is('instructor') && !is('finance_officer') && !is('auditor') && (
               <span className="row" style={{ justifyContent: 'flex-end' }}>
                 {staff && e.status === 'pending' && <button className="btn outline sm" onClick={async () => { try { await api.post(`/enrollments/${e.id}/confirm`, {}); toast('Place confirmed'); reload(); prog.reload(); } catch (err) { toast((err as ApiError).message, 'error'); } }}>Confirm</button>}
@@ -96,7 +97,7 @@ export default function ProgrammePage({ params }: { params: Promise<{ id: string
         </div>
       )}
       {tab === 'att' && <AttendanceSummary id={id} />}
-      {tab === 'asm' && <div className="stack">{can('assessments:write') && <div><Link href={`/assessments?new=1&programme=${id}&course=${p.course_id}`} className="btn">New assessment</Link></div>}<DataList path="/assessments" extra={{ programme_id: id }} columns={asms} search={false} empty={{ title: 'No assessments yet' }} /></div>}
+      {tab === 'asm' && <div className="stack">{can('assessments:write') && <div><Link href={`/assessments?new=1&programme=${id}&course=${p.course_id}`} className="btn">New assessment</Link></div>}<DataList path="/assessments" extra={{ programme_id: id }} columns={asms} search={false} empty={{ title: 'No assessments yet', hint: 'Create one with New assessment, add questions, then publish it.' }} /></div>}
       {tab === 'res' && <ResultsTab id={id} columns={results} tick={tick} onChange={bump} />}
 
       {edit && <FormModal title="Edit programme" size="wide" fields={programmeFields({ courses: [], rooms, instructors, orgs, creating: false })} initial={p} onClose={() => setEdit(false)} onSubmit={async (v) => { await api.patch(`/programmes/${id}`, v); toast('Saved'); bump(); }} />}
@@ -157,6 +158,7 @@ function ResultsTab({ id, columns, tick, onChange }: { id: string; columns: Colu
   const run = async (path: string, msg: (r: any) => string) => { setBusy(true); try { const r = await api.post(path); toast(msg(r)); onChange(); } catch (e) { toast((e as ApiError).message, 'error'); } setBusy(false); };
   return (
     <div className="stack">
+      {!is('trainee') && <CloseoutCard id={id} tick={tick} onChange={onChange} />}
       <div className="row wrap">
         {(can('results:finalise') || can('attempts:mark')) && <button className="btn outline" disabled={busy} onClick={() => run(`/programmes/${id}/results/compute`, (r) => `${r.computed} results recalculated`)}>Recalculate results</button>}
         {can('results:finalise') && <><button className="btn outline" disabled={busy} onClick={() => run(`/programmes/${id}/results/finalise-all`, (r) => `${r.finalised} finalised${r.blocked.length ? `, ${r.blocked.length} blocked: ${r.blocked[0].reason}` : ''}`)}>Finalise all ready results</button>
