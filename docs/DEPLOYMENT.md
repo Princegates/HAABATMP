@@ -72,6 +72,16 @@ npm run seed-catalogue -w apps/api
 
 It adds the eight training categories and one draft placeholder course for each offering. It creates no people and no passwords, and running it again changes nothing. The courses stay drafts until HAAB sets their real duration, fee and validity.
 
+### Sample data (staging only)
+
+To try the calendar, attendance, QR check-in and enrolments on staging, run this once from the API service's shell, after the catalogue seed:
+
+```bash
+SAMPLE_DATA=yes npm run seed-sample -w apps/api
+```
+
+It adds 5 trainers, 10 trainees in two sample client organisations, two classrooms and six programmes with sessions around today (one finished, one running, three open for registration, one draft), with some registrations. The sample people use `@example.com` addresses and cannot sign in. It also gives still-empty placeholder courses a duration, fee and an active status so programmes can open. It refuses to run without `SAMPLE_DATA=yes`. **Do not run it on production.** Running it twice changes nothing.
+
 ## 6. Email
 
 Create a Resend account, verify your sending domain (it gives you DNS records to add; **merge** its SPF entry into any
