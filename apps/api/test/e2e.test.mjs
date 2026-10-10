@@ -683,3 +683,42 @@ test('20. courses and categories can be deleted, unless real training records de
   const audit = [...ok(await api(S.sa).get('/audit?action=course.delete&limit=5')).data, ...ok(await api(S.sa).get('/audit?action=course_category.delete&limit=5')).data].map((r) => r.action);
   assert.ok(audit.includes('course.delete') && audit.includes('course_category.delete'));
 });
+
+test('21. questions can be imported from a Word file, previewed first, and nothing is saved when there are problems', async () => {
+  const { default: JSZip } = await import('jszip');
+  const makeDocx = async (paras) => {
+    const z = new JSZip();
+    z.file('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>');
+    z.file('word/document.xml', `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paras.map((t) => `<w:p><w:r><w:t xml:space="preserve">${t.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</w:t></w:r></w:p>`).join('')}</w:body></w:document>`);
+    return z.generateAsync({ type: 'nodebuffer' });
+  };
+  const upload = async (token, docx, fields, name = 'questions.docx') => {
+    const fd = new FormData(); for (const [k, v] of Object.entries(fields)) fd.append(k, v);
+    fd.append('file', new Blob([docx]), name);
+    return http('POST', '/questions/import', token, fd);
+  };
+  const tag = `IMP${run}`;
+  const good = await makeDocx(['Paper', '', `1. ${tag} which Annex covers security?`, 'A. Annex 6', 'B. Annex 17', 'Answer: B', 'Marks: 2', '', `2. ${tag} SMS is optional.`, 'Answer: False', '', `3. ${tag} discuss hazards.`, 'Type: Essay']);
+  const instr = api(S.tok_instr ?? S.tok_a1);
+  const preview = ok(await upload(S.tok_a1, good, { course_id: S.course.id }));
+  assert.equal(preview.total, 3); assert.equal(preview.can_import, true); assert.equal(preview.questions[0].answer, 1);
+  assert.equal((ok(await api(S.tok_a1).get(`/questions?course_id=${S.course.id}&q=${tag}&limit=10`)).data ?? []).length, 0, 'a preview saves nothing');
+  refused(await upload(S.tok_T1, good, { course_id: S.course.id }), 403, 'trainees cannot import');
+  const done = ok(await upload(S.tok_a1, good, { course_id: S.course.id, commit: 'true' }));
+  assert.equal(done.imported, 3);
+  // importing the same file again adds nothing new
+  const again = await upload(S.tok_a1, good, { course_id: S.course.id, commit: 'true' });
+  refused(again, 400, 'everything is already in the bank');
+  const rows = ok(await api(S.tok_a1).get(`/questions?course_id=${S.course.id}&limit=200`)).data.filter((q) => q.prompt.includes(tag));
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows.map((r) => r.type).sort(), ['essay', 'mcq_single', 'true_false']);
+  // a file with a problem is refused whole
+  const bad = await makeDocx([`1. ${tag} broken one`, 'A. One', 'B. Two', 'Answer: Z', '', `2. ${tag} fine one`, 'Answer: True']);
+  assert.equal(ok(await upload(S.tok_a1, bad, { course_id: S.course.id })).can_import, false);
+  refused(await upload(S.tok_a1, bad, { course_id: S.course.id, commit: 'true' }), 400, 'all or nothing');
+  assert.equal(ok(await api(S.tok_a1).get(`/questions?course_id=${S.course.id}&limit=200`)).data.filter((q) => q.prompt.includes(tag)).length, 3, 'nothing from the bad file was saved');
+  // wrong kinds of file
+  refused(await upload(S.tok_a1, Buffer.from('not a word file'), { course_id: S.course.id }, 'x.docx'), 400, 'not a zip');
+  refused(await upload(S.tok_a1, good, { course_id: S.course.id }, 'old.doc'), 400, 'only .docx');
+  refused(await upload(S.tok_a1, await makeDocx(['just a note']), { course_id: S.course.id }), 400, 'no questions found');
+});

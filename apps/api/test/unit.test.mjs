@@ -86,3 +86,43 @@ test('dates and csv', () => {
   assert.equal(csvEscape('a,b'), '"a,b"');
   assert.equal(csvEscape(null), '');
 });
+
+test('word import: reads every question type and ignores headings and notes', async () => {
+  const { parseQuestionLines } = await import('../dist/common/question-import.js');
+  const qs = parseQuestionLines([
+    'My question paper', 'Please read the notes first.', '',
+    '1. Which Annex covers security?', 'A. Annex 6', 'B. Annex 17', 'C. Annex 14', 'Answer: B', 'Marks: 2', 'Level: easy', 'Topic: AVSEC', '',
+    '2. Choose the hazards', 'A) Birds', 'B) Fog', 'C) Chairs', 'Answer: A, B', '',
+    '3. Airside speed limits apply to all vehicles.', 'Answer: True', '',
+    '4. Name the document that records hazards.', 'Answer: hazard register | the hazard register', '',
+    '5. Discuss the role of the SMS manager.', 'Type: Essay', 'Marks: 10',
+  ]);
+  assert.equal(qs.length, 5);
+  assert.deepEqual(qs.map((q) => q.type), ['mcq_single', 'mcq_multi', 'true_false', 'short_answer', 'essay']);
+  assert.equal(qs[0].answer, 1); assert.equal(qs[0].marks, 2); assert.equal(qs[0].difficulty, 'easy'); assert.equal(qs[0].topic, 'AVSEC');
+  assert.deepEqual(qs[1].answer, [0, 1]); assert.equal(qs[2].answer, true);
+  assert.deepEqual(qs[3].answer, ['hazard register', 'the hazard register']);
+  assert.ok(qs.every((q) => q.problems.length === 0));
+});
+
+test('word import: a correct option can be marked with a star, and long lines wrap into the line before', async () => {
+  const { parseQuestionLines } = await import('../dist/common/question-import.js');
+  const [q] = parseQuestionLines(['1. The runway strip', 'must be kept clear of what?', 'A. Obstacles *', 'B. Grass', 'C. Markings that', 'continue over two lines']);
+  assert.equal(q.prompt, 'The runway strip must be kept clear of what?');
+  assert.equal(q.answer, 0); assert.equal(q.options[0], 'Obstacles'); assert.equal(q.options[2], 'Markings that continue over two lines');
+});
+
+test('word import: problems are reported per question, not guessed', async () => {
+  const { parseQuestionLines } = await import('../dist/common/question-import.js');
+  const qs = parseQuestionLines([
+    '1. No answer given', 'A. One', 'B. Two', '',
+    '2. Answer is not an option', 'A. One', 'B. Two', 'Answer: D', '',
+    '3. Bad marks', 'A. One', 'B. Two', 'Answer: A', 'Marks: lots', '',
+    '4. True or false?', 'Answer: Maybe', 'Type: True or False',
+  ]);
+  assert.equal(qs.length, 4);
+  assert.match(qs[0].problems[0], /Mark the correct option/);
+  assert.match(qs[1].problems[0], /does not match an option letter/);
+  assert.ok(qs[2].problems.some((p) => /Marks/.test(p)));
+  assert.ok(qs[3].problems.length >= 1);
+});

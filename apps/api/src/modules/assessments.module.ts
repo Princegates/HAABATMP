@@ -1,4 +1,7 @@
-import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Module, NotFoundException, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Module, NotFoundException, Param, Patch, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { parseQuestionDocx } from '../common/question-import';
 import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
 import { Actor, AuthUser } from '../common/auth.types';
@@ -78,6 +81,49 @@ export class AssessmentsController {
       await this.audit.log(q, actor, 'question.create', 'question', row.id, null, { id: row.id, type: row.type, course_id: row.course_id });
       return row;
     });
+  }
+
+  /**
+   * Questions from a Word file. Without commit=true this only reads the file and shows what it found, so nothing is
+   * saved until the person has seen the preview. A file with any problem is refused as a whole: fix it and upload again.
+   */
+  @Post('questions/import')
+  @Require('questions:write')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
+  async importQuestions(@CurrentUser() u: AuthUser, @UploadedFile() file: { buffer: Buffer; originalname: string } | undefined, @Body() body: unknown, @ActorCtx() actor: Actor) {
+    const { course_id, commit } = parse(z.object({ course_id: uuid, commit: z.enum(['true', 'false']).default('false') }), body);
+    if (!file) throw new BadRequestException('Choose a Word file (.docx) to upload');
+    if (!/\.docx$/i.test(file.originalname)) throw new BadRequestException('Only Word .docx files are accepted. In Word, choose File > Save As > Word Document (.docx).');
+    const course = await this.db.one<any>('select id, code from courses where id = $1', [course_id]);
+    if (!course) throw new BadRequestException('Unknown course');
+    let parsed;
+    try { parsed = await parseQuestionDocx(file.buffer); } catch (e: any) { throw new BadRequestException(e.message); }
+    if (!parsed.length) throw new BadRequestException('No questions were found. Check the file follows the template: a numbered question, options A, B, C and a line "Answer: B".');
+    const existing = new Set((await this.db.query<{ p: string }>(`select lower(prompt) as p from questions where course_id = $1`, [course_id])).map((r) => r.p));
+    const seen = new Set<string>();
+    const questions = parsed.map((q) => {
+      const key = q.prompt.toLowerCase();
+      const duplicate = existing.has(key) || seen.has(key);
+      seen.add(key);
+      return { ...q, duplicate };
+    });
+    const bad = questions.filter((q) => q.problems.length).length;
+    const toAdd = questions.filter((q) => !q.problems.length && !q.duplicate);
+    const summary = { total: questions.length, ready: toAdd.length, with_problems: bad, duplicates: questions.filter((q) => q.duplicate).length };
+    if (commit !== 'true') return { ...summary, questions, can_import: bad === 0 && toAdd.length > 0 };
+    if (bad) throw new BadRequestException(`${bad} question${bad === 1 ? ' has' : 's have'} problems. Fix them in the Word file and upload it again. Nothing was imported.`);
+    if (!toAdd.length) throw new BadRequestException('Every question in this file is already in the question bank.');
+    await this.db.tx(async (q) => {
+      for (const d of toAdd) {
+        await q.query(
+          `insert into questions (course_id,topic,difficulty,type,prompt,options,answer,marks,explanation,created_by)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+          [course_id, d.topic, d.difficulty, d.type, d.prompt, d.options == null ? null : JSON.stringify(d.options), d.answer == null ? null : JSON.stringify(d.answer), d.marks, d.explanation, u.id]);
+      }
+      await this.audit.log(q, actor, 'question.import', 'course', course_id, null, { file: file.originalname.slice(0, 120), imported: toAdd.length, skipped_duplicates: summary.duplicates });
+    });
+    return { ...summary, imported: toAdd.length };
   }
 
   @Patch('questions/:id')

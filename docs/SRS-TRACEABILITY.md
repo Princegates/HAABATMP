@@ -70,3 +70,5 @@ Phase 1 is complete apart from the items marked Partly above. The corporate (cli
 2. Independent penetration test; Ghana Data Protection Act review (retention, erasure, hosting abroad).
 3. HAAB to replace the placeholder course values and confirm which authority recognises each course.
 4. Changing your own password while signed in, day/month calendar views, editable email templates, option shuffling, signature images, SCORM, SMS, WhatsApp, online payments and AI features are not built.
+
+**Question import.** Staff can add questions in bulk from a Word (.docx) file written to a simple template (Assessments > Question bank > Import from Word). The platform shows a preview, skips questions already in the bank, and refuses the whole file if any question has a problem.
