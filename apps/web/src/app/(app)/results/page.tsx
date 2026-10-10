@@ -15,7 +15,7 @@ export default function ResultsPage() {
     ...(seesOrg ? [{ key: 'organization_name', label: 'Organisation', render: (r: any) => r.organization_name ?? <span className="muted">Individual</span> }] : []),
     { key: 'programme_code', label: 'Programme', render: (r) => <span className="mono">{r.programme_code}</span>, href: (r) => `/programmes/${r.programme_id}` }, { key: 'course_title', label: 'Course' },
     { key: 'final_score', label: 'Score', num: true, render: (r) => (r.final_score === null ? '' : pct(r.final_score, 1)) }, { key: 'attendance_pct', label: 'Attendance', num: true, render: (r) => (r.attendance_pct === null ? '' : pct(r.attendance_pct, 0)) },
-    { key: 'status', label: 'Result', render: (r) => <Badge value={r.status} /> },
+    { key: 'status', label: 'Result', render: (r) => <><Badge value={r.status} />{r.pending_reason && <div className="muted" style={{ fontSize: 12, marginTop: 4, maxWidth: 260 }}>{r.pending_reason}</div>}</> },
     { key: 'certificate_number', label: 'Certificate', render: (r) => (r.certificate_id ? <Link href={`/certificates/${r.certificate_id}`} className="mono">{r.certificate_number}</Link> : '') },
   ];
   return (

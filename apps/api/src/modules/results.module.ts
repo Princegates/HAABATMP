@@ -39,11 +39,23 @@ export class ResultsController {
     const w = where.length ? `where ${where.join(' and ')}` : '';
     const data = await this.db.query(
       `select r.*, e.trainee_id, e.programme_id, t.full_name as trainee_name, o.name as organization_name, p.code as programme_code, p.title as programme_title,
-              c.title as course_title, c.pass_mark, ce.number as certificate_number, ce.id as certificate_id
+              c.title as course_title, c.pass_mark, ce.number as certificate_number, ce.id as certificate_id,
+              p.status as programme_status, p.end_date,
+              (select count(*) from assessments a where a.programme_id = p.id and a.status in ('published','closed') and a.kind in ('exam','practical'))::int as required_assessments,
+              (select count(*) from exam_attempts x join assessments a on a.id = x.assessment_id
+                where a.programme_id = p.id and x.trainee_id = e.trainee_id and x.status = 'submitted')::int as awaiting_marking
          from results r join enrollments e on e.id = r.enrollment_id join users t on t.id = e.trainee_id join programmes p on p.id = e.programme_id
          join courses c on c.id = p.course_id left join organizations o on o.id = t.organization_id
          left join certificates ce on ce.enrollment_id = e.id and ce.status = 'valid'
          ${w} order by p.start_date desc, t.full_name limit ${f.limit} offset ${f.offset}`, params);
+    const today = new Date().toISOString().slice(0, 10);
+    for (const r of data as any[]) {
+      r.pending_reason = r.status !== 'pending' || r.finalised ? null
+        : r.programme_status !== 'completed' && r.end_date >= today ? 'The programme is not completed yet. Mark it Completed, or wait for its end date.'
+        : r.awaiting_marking > 0 ? `Waiting for marking: ${r.awaiting_marking} attempt${r.awaiting_marking === 1 ? '' : 's'} still to be marked.`
+        : r.required_assessments > 0 ? 'Not calculated since the programme ended. Select Recalculate results.'
+        : 'No assessment is set and no class has been held, so there is nothing to base a result on.';
+    }
     const total = (await this.db.one<{ n: number }>(`select count(*) n from results r join enrollments e on e.id = r.enrollment_id join users t on t.id = e.trainee_id join programmes p on p.id = e.programme_id ${w}`, params))!.n;
     return { data, total };
   }
