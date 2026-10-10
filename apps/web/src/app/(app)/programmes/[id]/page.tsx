@@ -150,7 +150,7 @@ function AttendanceSummary({ id }: { id: string }) {
 }
 
 function ResultsTab({ id, columns, tick, onChange }: { id: string; columns: Column<any>[]; tick: number; onChange: () => void }) {
-  const { can } = useAuth();
+  const { can, is } = useAuth();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [override, setOverride] = useState<any | null>(null);
@@ -163,7 +163,7 @@ function ResultsTab({ id, columns, tick, onChange }: { id: string; columns: Colu
           <button className="btn" disabled={busy} onClick={() => run(`/programmes/${id}/results/release`, (r) => `${r.released} released to trainees`)}>Release results</button></>}
       </div>
       <div className="muted" style={{ fontSize: 13.5 }}>Results are worked out from attendance and marked assessments once the programme has ended. Finalising makes a result official and issues the certificate. Whoever marked someone's work cannot finalise it.</div>
-      <DataList path="/results" extra={{ programme_id: id }} columns={columns} refreshKey={tick} searchPlaceholder="Search trainee" empty={{ title: 'No results yet', hint: 'Results appear once trainees are confirmed.' }}
+      <DataList path="/results" extra={{ programme_id: id }} columns={columns} refreshKey={tick} searchPlaceholder="Search trainee" empty={{ title: 'No results yet', hint: is('trainee') ? 'Your result appears here once HAAB has finalised and released it. You will get a notification when it does.' : 'Results appear once trainees are confirmed.' }}
         actions={(r, reload) => can('results:finalise') && (<span className="row" style={{ justifyContent: 'flex-end' }}>
           {!r.finalised && r.status !== 'pending' && <button className="btn outline sm" onClick={async () => { try { await api.post(`/results/${r.id}/finalise`, {}); toast('Finalised'); reload(); onChange(); } catch (e) { toast((e as ApiError).message, 'error'); } }}>Finalise</button>}
           {r.finalised && can('results:override') && <button className="btn ghost sm" onClick={() => setOverride(r)}>Change</button>}</span>)} />
