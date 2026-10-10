@@ -212,12 +212,17 @@ export class AssessmentsController {
   @Require('assessments:write')
   async update(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
     parse(uuid, id);
-    const d = parse(assessmentBody.omit({ course_id: true, programme_id: true }).partial(), body);
+    const parsed = parse(assessmentBody.omit({ course_id: true, programme_id: true }).partial(), body);
+    // only what the caller actually sent counts as a change; the schema's defaults must not overwrite saved values
+    const sent = new Set(Object.keys((body ?? {}) as object));
+    const d = Object.fromEntries(Object.entries(parsed).filter(([k]) => sent.has(k))) as typeof parsed;
     const a = await this.loadManaged(u, id);
     const onlyWindow = Object.keys(d).every((k) => k === 'closes_at' || k === 'opens_at');
     if (a.status !== 'draft' && !onlyWindow) throw new ConflictException('A published assessment can only have its opening and closing times changed');
+    const merged = { ...a, ...Object.fromEntries(Object.entries(d).map(([k, v]) => [k, v ?? null])) } as any;
+    if (merged.opens_at && merged.closes_at && new Date(merged.closes_at) <= new Date(merged.opens_at)) throw new BadRequestException('Closing time must be after opening time');
     return this.db.tx(async (q) => {
-      const m = { ...a, ...Object.fromEntries(Object.entries(d).map(([k, v]) => [k, v ?? null])) } as any;
+      const m = merged;
       const after = await q.one(
         `update assessments set title=$2,kind=$3,duration_minutes=$4,pass_mark=$5,max_attempts=$6,randomize=$7,release_mode=$8,opens_at=$9,closes_at=$10 where id=$1 returning *`,
         [id, m.title, m.kind, m.duration_minutes, m.pass_mark, m.max_attempts, m.randomize, m.release_mode, m.opens_at, m.closes_at]);

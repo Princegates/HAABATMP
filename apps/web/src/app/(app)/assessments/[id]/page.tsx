@@ -17,6 +17,7 @@ export default function AssessmentPage({ params }: { params: Promise<{ id: strin
   const [picking, setPicking] = useState(false);
   const [auto, setAuto] = useState(false);
   const [confirm, setConfirm] = useState<'publish' | 'close' | 'release' | null>(null);
+  const [win, setWin] = useState(false);
   if (a.error) return <ErrorNote error={a.error} />;
   if (!a.data) return <Loading />;
   const x = a.data; const w = can('assessments:write'); const total = x.questions.reduce((s: number, q: any) => s + Number(q.assigned_marks), 0);
@@ -25,6 +26,7 @@ export default function AssessmentPage({ params }: { params: Promise<{ id: strin
     <>
       <PageHead title={x.title} crumbs={[{ label: 'Assessments', href: '/assessments' }, { label: x.title }]} subtitle={<><Badge value={x.status} /> · {label(x.kind)} · {x.duration_minutes} minutes · pass mark {x.pass_mark}%</>}
         actions={<>
+          {w && (x.status === 'draft' || x.status === 'published') && <button className="btn outline" onClick={() => setWin(true)}>Opening times</button>}
           {w && x.status === 'draft' && <button className="btn outline" onClick={() => setPicking(true)}>Add questions</button>}
           {w && x.status === 'draft' && <button className="btn outline" onClick={() => setAuto(true)}>Pick at random</button>}
           {w && x.status === 'draft' && <button className="btn" onClick={() => setConfirm('publish')}>Publish</button>}
@@ -40,6 +42,13 @@ export default function AssessmentPage({ params }: { params: Promise<{ id: strin
           <table className="table"><thead><tr><th>#</th><th>Question</th><th>Type</th><th className="num">Marks</th></tr></thead><tbody>{x.questions.map((q: any, i: number) => <tr key={q.id}><td>{i + 1}</td><td>{q.prompt}</td><td>{label(q.type)}</td><td className="num">{q.assigned_marks}</td></tr>)}</tbody></table>)}
       </Card>
       {picking && <BankPicker assessment={x} onClose={() => setPicking(false)} onDone={() => { a.reload(); }} />}
+      {win && <FormModal title="Opening times" size="narrow" submitLabel="Save times" onClose={() => setWin(false)}
+        fields={[
+          { name: 'opens_at', label: 'Opens (UTC)', type: 'datetime', help: 'Leave empty to open as soon as it is published. UTC is the same as Ghana time.' },
+          { name: 'closes_at', label: 'Closes (UTC)', type: 'datetime', help: 'Leave empty for no deadline. A trainee who starts shortly before this time only has until it closes, so leave enough room for the full time allowed.' },
+        ]}
+        initial={{ opens_at: x.opens_at ? String(x.opens_at).slice(0, 16) : '', closes_at: x.closes_at ? String(x.closes_at).slice(0, 16) : '' }}
+        onSubmit={async (v) => { await api.patch(`/assessments/${id}`, { opens_at: v.opens_at ?? null, closes_at: v.closes_at ?? null }); toast('Opening times saved'); a.reload(); }} />}
       {auto && <FormModal title="Pick questions at random" size="narrow" fields={[{ name: 'count', label: 'How many', type: 'number', required: true, min: 1, max: 200 }, { name: 'topic', label: 'Topic', help: 'Optional' }]} initial={{ count: 10 }} onClose={() => setAuto(false)}
         onSubmit={async (v) => { const r = await api.post(`/assessments/${id}/questions/auto`, v); toast(r.short_by ? `Added ${r.added}. The bank only had that many matching.` : `Added ${r.added} questions`); a.reload(); }} />}
       {confirm === 'publish' && <ConfirmModal title="Publish this assessment?" message="Trainees on the programme can sit it as soon as it opens. The questions can no longer be changed." confirmLabel="Publish" onClose={() => setConfirm(null)} onConfirm={async () => { await api.post(`/assessments/${id}/publish`, {}); toast('Published'); a.reload(); }} />}

@@ -722,3 +722,24 @@ test('21. questions can be imported from a Word file, previewed first, and nothi
   refused(await upload(S.tok_a1, good, { course_id: S.course.id }, 'old.doc'), 400, 'only .docx');
   refused(await upload(S.tok_a1, await makeDocx(['just a note']), { course_id: S.course.id }), 400, 'no questions found');
 });
+
+test('22. opening times of a published assessment can be changed; a partial update keeps the other settings', async () => {
+  const a1 = api(S.tok_a1);
+  const course = S.course;
+  const x = ok(await a1.post('/assessments', { course_id: course.id, title: `Window ${run}`, kind: 'exam', duration_minutes: 45, pass_mark: 65, max_attempts: 2, randomize: false, release_mode: 'immediate' }));
+  // a partial update must not reset anything it did not mention
+  const renamed = ok(await a1.patch(`/assessments/${x.id}`, { title: `Window renamed ${run}` }));
+  assert.equal(renamed.duration_minutes, 45); assert.equal(renamed.pass_mark, 65); assert.equal(renamed.max_attempts, 2); assert.equal(renamed.randomize, false); assert.equal(renamed.release_mode, 'immediate');
+  const qs = ok(await a1.post('/questions', { course_id: course.id, type: 'true_false', prompt: `Window question ${run}`, answer: true, marks: 1 }));
+  ok(await api(S.tok_a1).put(`/assessments/${x.id}/questions`, { items: [{ question_id: qs.id }] }));
+  ok(await a1.post(`/assessments/${x.id}/publish`));
+  // once published, only the times may change
+  refused(await a1.patch(`/assessments/${x.id}`, { title: 'Sneaky' }), 409, 'a published assessment is otherwise frozen');
+  const opens = new Date(Date.now() - 3600000).toISOString(); const closes = new Date(Date.now() + 86400000).toISOString();
+  const after = ok(await a1.patch(`/assessments/${x.id}`, { opens_at: opens, closes_at: closes }));
+  assert.equal(new Date(after.opens_at).toISOString(), opens);
+  assert.equal(after.duration_minutes, 45, 'the other settings are untouched');
+  const cleared = ok(await a1.patch(`/assessments/${x.id}`, { opens_at: null, closes_at: null }));
+  assert.equal(cleared.opens_at, null); assert.equal(cleared.closes_at, null);
+  refused(await a1.patch(`/assessments/${x.id}`, { opens_at: closes, closes_at: opens }), 400, 'closing must be after opening');
+});
