@@ -31,7 +31,8 @@ export class CertificatesService {
   ) {}
 
   /** Issues the certificate for a passed enrolment. Safe to call twice: the live one is returned. */
-  async issue(q: Q, enrollmentId: string, actor: Actor) {
+  /** `keep` is for a reissue: the replacement carries the original dates, so correcting a certificate never renews it. */
+  async issue(q: Q, enrollmentId: string, actor: Actor, keep?: { issued_at: string; expires_at: string | null }) {
     const live = await q.one<any>(`select * from certificates where enrollment_id = $1 and status = 'valid'`, [enrollmentId]);
     if (live) return live;
     const e = await q.one<any>(
@@ -39,7 +40,7 @@ export class CertificatesService {
          from enrollments e join programmes p on p.id = e.programme_id join courses c on c.id = p.course_id
          join course_categories k on k.id = c.category_id join users t on t.id = e.trainee_id where e.id = $1`, [enrollmentId]);
     if (!e) throw new NotFoundException('Enrolment not found');
-    const issued = todayUtc();
+    const issued = keep?.issued_at ?? todayUtc();
     const number = await this.numbers.certificate(q, e.category_code);
     const prev = await q.one<any>(`select id from certificates where trainee_id = $1 and course_id = $2 order by issued_at desc, created_at desc limit 1`, [e.trainee_id, e.course_id]);
     const tpl = await q.one<any>(
@@ -48,7 +49,7 @@ export class CertificatesService {
       `insert into certificates (number, verification_token, enrollment_id, trainee_id, course_id, programme_id, template_id, issued_at, expires_at, renewal_of, issued_by)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,
       [number, this.crypto.token(32), enrollmentId, e.trainee_id, e.course_id, e.programme_id, tpl?.id ?? null, issued,
-        e.validity_months ? addMonths(issued, e.validity_months) : null, prev?.id ?? null, actor.id]);
+        keep ? keep.expires_at : e.validity_months ? addMonths(issued, e.validity_months) : null, prev?.id ?? null, actor.id]);
     await this.audit.log(q, actor, 'certificate.issue', 'certificate', row.id, null, { number, trainee_id: e.trainee_id, course_id: e.course_id, expires_at: row.expires_at });
     return row;
   }

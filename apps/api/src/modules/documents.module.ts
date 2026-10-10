@@ -68,7 +68,7 @@ export class DocumentsController {
   @Post()
   @Require('documents:write')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 100 * 1024 * 1024, files: 1 } }))
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: Number(process.env.MAX_UPLOAD_MB ?? 25) * 1024 * 1024 + 1024, files: 1 } }))
   async upload(@CurrentUser() u: AuthUser, @UploadedFile() file: Express.Multer.File | undefined, @Body() body: unknown, @ActorCtx() actor: Actor) {
     if (!file) throw new BadRequestException('Choose a file to upload');
     const d = parse(z.object({ category: z.enum(CATEGORIES), owner_user_id: uuid.optional(), organization_id: uuid.optional(), confidential: z.enum(['true', 'false']).default('true') }), body);

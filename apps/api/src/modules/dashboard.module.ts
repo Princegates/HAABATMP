@@ -3,7 +3,7 @@ import { Public, CurrentUser, Require } from '../common/decorators';
 import { AuthUser } from '../common/auth.types';
 import { Db } from '../common/db.service';
 import { SettingsService } from '../common/settings.service';
-import { seesAllClients } from '../common/scope';
+import { requireOrgScope, seesAllClients } from '../common/scope';
 import { parse, uuid } from '../common/validation';
 import { z } from 'zod';
 
@@ -198,7 +198,7 @@ export class SearchController {
     const staff = ['super_admin', 'training_admin', 'auditor'].includes(u.role);
 
     if (staff || u.role === 'org_admin') {
-      const org = seesAllClients(u) ? null : u.organizationId;
+      const org = seesAllClients(u) ? null : requireOrgScope(u);
       await add('trainee', 'Trainees', `select id, full_name as title, email as subtitle from users where role = 'trainee' and ($2::uuid is null or organization_id = $2) and (full_name ilike $1 or email ilike $1) order by full_name limit 5`, [like, org]);
     }
     if (staff) await add('instructor', 'Instructors', `select id, full_name as title, email as subtitle from users where role = 'instructor' and (full_name ilike $1 or email ilike $1) order by full_name limit 5`, [like]);
@@ -206,7 +206,7 @@ export class SearchController {
     if (u.role !== 'finance_officer') await add('course', 'Courses', `select id, title, code as subtitle from courses where (status = 'active' or $2) and (title ilike $1 or code ilike $1) order by title limit 5`, [like, staff]);
     if (staff) await add('programme', 'Programmes', `select id, title, code as subtitle from programmes where title ilike $1 or code ilike $1 order by start_date desc limit 5`, [like]);
     if (staff || u.role === 'org_admin') {
-      const org = seesAllClients(u) ? null : u.organizationId;
+      const org = seesAllClients(u) ? null : requireOrgScope(u);
       await add('certificate', 'Certificates', `select ce.id, ce.number as title, t.full_name as subtitle from certificates ce join users t on t.id = ce.trainee_id join results r on r.enrollment_id = ce.enrollment_id
                                                   where ($2::uuid is null or (t.organization_id = $2 and r.released)) and (ce.number ilike $1 or t.full_name ilike $1) order by ce.issued_at desc limit 5`, [like, org]);
     }

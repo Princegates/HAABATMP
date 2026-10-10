@@ -1,4 +1,4 @@
-import JSZip from 'jszip';
+import { assertSafeZip } from './zip-guard';
 import { validateQuestionShape } from './grading';
 
 /**
@@ -31,6 +31,7 @@ export interface ParsedQuestion {
 }
 
 const MAX_QUESTIONS = 500;
+const MAX_PARAGRAPHS = 50_000;
 
 const decode = (s: string) => s
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
@@ -40,23 +41,36 @@ const decode = (s: string) => s
 /** The paragraphs of a .docx, in order (text inside tables included), as plain lines. */
 export async function docxParagraphs(file: Buffer): Promise<string[]> {
   if (file.length < 4 || file[0] !== 0x50 || file[1] !== 0x4b) throw new Error('This is not a Word .docx file. In Word, choose File > Save As > Word Document (.docx).');
-  let zip: JSZip;
-  try { zip = await JSZip.loadAsync(file); } catch { throw new Error('This file could not be opened. Save it again as a Word Document (.docx).'); }
+  const zip = await assertSafeZip(file, 'Word document');
   const entry = zip.file('word/document.xml');
   if (!entry) throw new Error('This is not a Word document. Save it as a Word Document (.docx).');
-  // refuse files that unpack to something absurd
+  // refuse files that unpack to something absurd, before unpacking them
+  if (((entry as any)._data?.uncompressedSize ?? 0) > 20_000_000) throw new Error('This document is too large to import. Split it into smaller files.');
   const xml = await entry.async('string');
   if (xml.length > 20_000_000) throw new Error('This document is too large to import. Split it into smaller files.');
   const out: string[] = [];
-  for (const p of xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) ?? []) {
+  // Linear scans only: a hostile file can hold millions of tags, so nothing here may rescan the rest of the file per tag.
+  const chunks = xml.split('</w:p>');
+  if (chunks.length > MAX_PARAGRAPHS) throw new Error('This document has too many paragraphs to import. Split it into smaller files.');
+  for (const chunk of chunks) {
+    const a = Math.max(chunk.lastIndexOf('<w:p '), chunk.lastIndexOf('<w:p>'));
+    if (a < 0) continue;
+    const p = chunk.slice(a);
+    if (p.length > 200_000) throw new Error('This document has a paragraph that is too long to import.');
     let text = '';
-    for (const m of p.matchAll(/<w:t(?: [^>]*)?>([\s\S]*?)<\/w:t>|<w:tab\/>|<w:br\/>|<w:noBreakHyphen\/>/g)) {
-      if (m[0].startsWith('<w:t')) text += decode(m[1]);
-      else if (m[0] === '<w:tab/>') text += ' ';
+    const tag = /<w:t(?: [^>]*)?>|<w:tab\/>|<w:br\/>|<w:noBreakHyphen\/>/g;
+    let m: RegExpExecArray | null;
+    while ((m = tag.exec(p))) {
+      if (m[0].startsWith('<w:t') && m[0] !== '<w:tab/>') {
+        const end = p.indexOf('</w:t>', tag.lastIndex);
+        if (end < 0) break;
+        text += decode(p.slice(tag.lastIndex, end));
+        tag.lastIndex = end + 6;
+      } else if (m[0] === '<w:tab/>') text += ' ';
       else if (m[0] === '<w:br/>') text += '\n';
       else text += '-';
     }
-    for (const line of text.split('\n')) out.push(line.replace(/ /g, ' ').trim());
+    for (const line of text.split('\n')) out.push(line.replace(/ /g, ' ').trim());
   }
   return out;
 }
@@ -65,19 +79,22 @@ const NUMBERED = /^(?:q(?:uestion)?\s*)?(\d{1,3})\s*[.):\-]\s+(.*)$/i;
 const OPTION = /^\(?([A-Ha-h])[.)]\s+(.*)$/;
 const FIELD = /^(answers?|marks?|points?|level|difficulty|topic|explanation|type)\s*[:=]\s*(.*)$/i;
 
-interface Block { lines: string[]; startedAt: number }
+interface Block { lines: string[]; startedAt: number; hasAnswer: boolean; options: number }
 
 function split(lines: string[]): Block[] {
   const blocks: Block[] = [];
   let cur: Block | null = null;
   let sawBlank = false;
-  const complete = (b: Block) => b.lines.some((l) => FIELD.test(l) && /^(answers?|type)/i.test(l)) || b.lines.filter((l) => OPTION.test(l)).length >= 2;
+  // kept as running counters so deciding "is this question complete" never rescans the block
+  const complete = (b: Block) => b.hasAnswer || b.options >= 2;
   lines.forEach((l, i) => {
     if (!l) { sawBlank = true; return; }
     const startsNew = NUMBERED.test(l) && !OPTION.test(l) && !FIELD.test(l);
     const afterBlock = cur && sawBlank && complete(cur) && !OPTION.test(l) && !FIELD.test(l);
-    if (!cur || startsNew || afterBlock) { cur = { lines: [], startedAt: i + 1 }; blocks.push(cur); }
+    if (!cur || startsNew || afterBlock) { cur = { lines: [], startedAt: i + 1, hasAnswer: false, options: 0 }; blocks.push(cur); }
     cur.lines.push(l);
+    if (FIELD.test(l) && /^(answers?|type)/i.test(l)) cur.hasAnswer = true;
+    if (OPTION.test(l)) cur.options++;
     sawBlank = false;
   });
   return blocks;

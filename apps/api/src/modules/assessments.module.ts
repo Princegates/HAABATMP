@@ -11,7 +11,7 @@ import { ActorCtx, CurrentUser, Require } from '../common/decorators';
 import { grade, publicQuestion, QuestionRow, shuffle, validateQuestionShape } from '../common/grading';
 import { NotifyService } from '../common/notify.service';
 import { isStaff } from '../common/scope';
-import { isoDateTime, pageQuery, parse, uuid } from '../common/validation';
+import { isoDateTime, pageQuery, parse, uuid, patchOf } from '../common/validation';
 
 const TYPES = ['mcq_single', 'mcq_multi', 'true_false', 'short_answer', 'essay', 'matching', 'scenario'] as const;
 const GRACE_MS = 10_000; // network slack on the final autosave; the clock itself is the server's
@@ -24,7 +24,7 @@ const questionBody = z.object({
   prompt: z.string().trim().min(3).max(4000),
   options: z.any().nullish(),
   answer: z.any().nullish(),
-  marks: z.number().positive().max(100).default(1),
+  marks: z.number().min(0.01).max(100).default(1),
   explanation: z.string().trim().max(3000).nullish(),
 });
 const assessmentBody = z.object({
@@ -55,7 +55,14 @@ export class AssessmentsController {
     const params: any[] = [f.status];
     const where = ['q.status = $1'];
     const add = (sql: string, v: any) => { params.push(v); where.push(sql.replace('?', `$${params.length}`)); };
-    if (f.course_id) add('q.course_id = ?', f.course_id);
+    if (f.course_id) { await this.assertCourseAccess(u, f.course_id); add('q.course_id = ?', f.course_id); }
+    else if (u.role === 'instructor') {
+      // with no course chosen, an instructor sees only the courses they teach
+      params.push(u.id);
+      where.push(`(exists (select 1 from course_instructors ci where ci.course_id = q.course_id and ci.instructor_id = $${params.length})
+        or exists (select 1 from programmes p where p.course_id = q.course_id and (p.lead_instructor_id = $${params.length}
+                   or exists (select 1 from sessions s where s.programme_id = p.id and s.instructor_id = $${params.length}))))`);
+    }
     if (f.module_id) add('q.module_id = ?', f.module_id);
     if (f.type) add('q.type = ?', f.type);
     if (f.topic) add('q.topic ilike ?', `%${f.topic}%`);
@@ -69,6 +76,7 @@ export class AssessmentsController {
   @Require('questions:write')
   async createQuestion(@CurrentUser() u: AuthUser, @Body() body: unknown, @ActorCtx() actor: Actor) {
     const d = parse(questionBody, body);
+    await this.assertCourseAccess(u, d.course_id);
     const problem = validateQuestionShape(d.type, d.options, d.answer);
     if (problem) throw new BadRequestException(problem);
     return this.db.tx(async (q) => {
@@ -95,6 +103,7 @@ export class AssessmentsController {
     if (!/\.docx$/i.test(file.originalname)) throw new BadRequestException('Only Word .docx files are accepted. In Word, choose File > Save As > Word Document (.docx).');
     const course = await this.db.one<any>('select id, code from courses where id = $1', [course_id]);
     if (!course) throw new BadRequestException('Unknown course');
+    await this.assertCourseAccess(u, course_id);
     let parsed;
     try { parsed = await parseQuestionDocx(file.buffer); } catch (e: any) { throw new BadRequestException(e.message); }
     if (!parsed.length) throw new BadRequestException('No questions were found. Check the file follows the template: a numbered question, options A, B, C and a line "Answer: B".');
@@ -126,12 +135,18 @@ export class AssessmentsController {
 
   @Patch('questions/:id')
   @Require('questions:write')
-  async updateQuestion(@Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
+  async updateQuestion(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
     parse(uuid, id);
-    const d = parse(questionBody.omit({ course_id: true }).partial().extend({ status: z.enum(['active', 'retired']).optional() }), body);
+    const d = parse(patchOf(questionBody.omit({ course_id: true }).extend({ status: z.enum(['active', 'retired']).optional() })), body);
     return this.db.tx(async (q) => {
       const before = await q.one<any>('select * from questions where id = $1 for update', [id]);
       if (!before) throw new NotFoundException();
+      await this.assertCourseAccess(u, before.course_id);
+      // A question in a published or closed assessment is frozen: changing its answer would change how people are marked.
+      const live = await q.one(`select 1 from assessment_questions aq join assessments a on a.id = aq.assessment_id where aq.question_id = $1 and a.status <> 'draft' limit 1`, [id]);
+      if (live && (('options' in d) || ('answer' in d) || ('type' in d) || ('marks' in d))) {
+        throw new ConflictException('This question is in a published assessment. Retire it and create a new one instead.');
+      }
       // A question already used in a taken exam is retired, not rewritten, so past marks stay explainable.
       const used = await q.one(`select 1 from attempt_answers where question_id = $1 limit 1`, [id]);
       const m = { ...before, ...d } as any;
@@ -212,7 +227,7 @@ export class AssessmentsController {
   @Require('assessments:write')
   async update(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
     parse(uuid, id);
-    const parsed = parse(assessmentBody.omit({ course_id: true, programme_id: true }).partial(), body);
+    const parsed = parse(patchOf(assessmentBody.omit({ course_id: true, programme_id: true })), body);
     // only what the caller actually sent counts as a change; the schema's defaults must not overwrite saved values
     const sent = new Set(Object.keys((body ?? {}) as object));
     const d = Object.fromEntries(Object.entries(parsed).filter(([k]) => sent.has(k))) as typeof parsed;
@@ -388,7 +403,7 @@ export class AssessmentsController {
   @Require('assessments:read')
   async save(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() body: unknown) {
     parse(uuid, id);
-    const { answers } = parse(z.object({ answers: z.record(uuid, z.any()) }), body);
+    const { answers } = parse(z.object({ answers: z.record(uuid, z.any()).refine((a) => Object.keys(a).length <= 300 && Object.values(a).every((v) => JSON.stringify(v ?? null).length <= 10_000), 'An answer is too long') }), body);
     const outcome = await this.db.tx(async (q) => {
       const a = await q.one<any>('select * from exam_attempts where id = $1 and trainee_id = $2 for update', [id, u.id]);
       if (!a) throw new NotFoundException();
@@ -472,6 +487,11 @@ export class AssessmentsController {
     return this.db.tx(async (q) => {
       const a = await q.one<any>(`select * from exam_attempts where id = $1 and status in ('submitted','marked') for update`, [id]);
       if (!a) throw new ConflictException('This attempt is not ready for marking');
+      // once the result is finalised the score is part of the official record: change it through a result override, which is audited
+      const sealed = await q.one(
+        `select 1 from results r join enrollments e on e.id = r.enrollment_id join assessments s on s.programme_id = e.programme_id
+          where s.id = $1 and e.trainee_id = $2 and r.finalised limit 1`, [a.assessment_id, a.trainee_id]);
+      if (sealed) throw new ConflictException('This trainee\'s result has been finalised, so the marks cannot be changed here. Use a result override with a reason.');
       const caps = new Map((await q.query<{ question_id: string; marks: number }>('select question_id, marks from assessment_questions where assessment_id = $1', [a.assessment_id])).map((c) => [c.question_id, c.marks]));
       for (const m of marks) {
         const cap = caps.get(m.question_id);
@@ -497,13 +517,29 @@ export class AssessmentsController {
   /** Called by the scheduled job: closes attempts whose time ran out while the trainee was away. */
   async sweepExpiredAttempts(): Promise<number> {
     const rows = await this.db.query<{ id: string }>(`select id from exam_attempts where status = 'in_progress' and deadline_at + interval '10 seconds' < now()`);
-    for (const r of rows) await this.db.tx((q) => this.finish(q, r.id, true));
+    for (const r of rows) {
+      // re-check under a lock: a marker or the trainee may have finished it since the list was read
+      await this.db.tx(async (q) => {
+        if (await q.one(`select 1 from exam_attempts where id = $1 and status = 'in_progress' for update`, [r.id])) await this.finish(q, r.id, true);
+      });
+    }
     return rows.length;
   }
 
   // ------------------------------------------------------------ internals
 
   /** SQL fragment limiting an instructor to assessments they created, lead or teach on. $n is their user id. */
+  /** An instructor works on the question bank of courses they are listed for or teach a programme of; staff and auditors on all. */
+  private async assertCourseAccess(u: AuthUser, courseId: string) {
+    if (isStaff(u) || u.role === 'auditor') return;
+    if (u.role !== 'instructor') throw new ForbiddenException();
+    const ok = await this.db.one(
+      `select 1 where exists (select 1 from course_instructors where course_id = $1 and instructor_id = $2)
+           or exists (select 1 from programmes p where p.course_id = $1 and (p.lead_instructor_id = $2
+                      or exists (select 1 from sessions s where s.programme_id = p.id and s.instructor_id = $2)))`, [courseId, u.id]);
+    if (!ok) throw new ForbiddenException('You do not teach this course');
+  }
+
   private instructorScope(alias = 'a') {
     return `(${alias}.created_by = ? or exists (select 1 from programmes pp where pp.id = ${alias}.programme_id and (pp.lead_instructor_id = ? or exists (select 1 from sessions ss where ss.programme_id = pp.id and ss.instructor_id = ?))))`;
   }
@@ -530,6 +566,9 @@ export class AssessmentsController {
   private async setAssessmentStatus(id: string, status: string, actor: Actor) {
     return this.db.tx(async (q) => {
       const before = await q.one<any>('select status from assessments where id = $1 for update', [id]);
+      if (!before) throw new NotFoundException();
+      // closing is only for something that was published; closing a draft would make it count as a required exam nobody could sit
+      if (status === 'closed' && before.status !== 'published') throw new ConflictException('Only a published assessment can be closed');
       const after = await q.one('update assessments set status = $2 where id = $1 returning *', [id, status]);
       await this.audit.log(q, actor, `assessment.${status}`, 'assessment', id, before, { status });
       return after;

@@ -5,7 +5,7 @@ import { AuditService } from '../common/audit.service';
 import { Db } from '../common/db.service';
 import { ActorCtx, CurrentUser, Require } from '../common/decorators';
 import { assertSameOrg, seesAllClients } from '../common/scope';
-import { pageQuery, parse, uuid } from '../common/validation';
+import { pageQuery, parse, uuid, patchOf } from '../common/validation';
 
 const orgBody = z.object({
   name: z.string().trim().min(2).max(200),
@@ -85,7 +85,7 @@ export class OrganizationsController {
   @Require('orgs:write')
   async update(@Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
     parse(uuid, id);
-    const d = parse(orgBody.partial(), body);
+    const d = parse(patchOf(orgBody), body);
     return this.db.tx(async (q) => {
       const before = await q.one('select * from organizations where id = $1 for update', [id]);
       if (!before) throw new NotFoundException();

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Module, NotFoundException, Param, Patch, Post, Query, Res, StreamableFile } from '@nestjs/common';
+import { Body, ConflictException, Controller, Get, Header, Module, NotFoundException, Param, Patch, Post, Query, Res, StreamableFile } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
 import { Actor, AuthUser } from '../common/auth.types';
@@ -6,10 +6,10 @@ import { AuditService } from '../common/audit.service';
 import { CertificatesService, certStatus } from '../common/certificates.service';
 import { Db } from '../common/db.service';
 import { ActorCtx, CurrentUser, Public, Require } from '../common/decorators';
-import { seesAllClients } from '../common/scope';
+import { isStaff, seesAllClients } from '../common/scope';
 import { NotifyService } from '../common/notify.service';
 import { SettingsService } from '../common/settings.service';
-import { pageQuery, parse, uuid } from '../common/validation';
+import { pageQuery, parse, uuid, patchOf } from '../common/validation';
 
 const CERT_COLS = `c.id, c.number, c.status as stored_status, c.issued_at, c.expires_at, c.revoked_at, c.revoke_reason, c.renewal_of, c.trainee_id, c.course_id, c.programme_id,
   t.full_name as trainee_name, t.email as trainee_email, o.name as organization_name, co.code as course_code, co.title as course_title, p.code as programme_code`;
@@ -99,6 +99,8 @@ export class CertificatesController {
   async pdf(@CurrentUser() u: AuthUser, @Param('id') id: string, @Res({ passthrough: true }) res: any, @ActorCtx() actor: Actor) {
     parse(uuid, id);
     await this.visible(u, id);
+    // a revoked certificate stays on record for staff, but is not handed out as a document that looks valid
+    if (!isStaff(u) && u.role !== 'auditor' && (await this.db.one(`select 1 from certificates where id = $1 and status = 'revoked'`, [id]))) throw new ConflictException('This certificate has been revoked');
     const { file, number } = await this.certs.pdf(id);
     res.set('Content-Disposition', `attachment; filename="${number}.pdf"`);
     await this.audit.log(null, actor, 'certificate.download', 'certificate', id);
@@ -120,10 +122,14 @@ export class CertificatesController {
     parse(uuid, id);
     const { reason } = parse(z.object({ reason: z.string().trim().min(5).max(500) }), body);
     return this.db.tx(async (q) => {
-      const old = await q.one<any>('select enrollment_id from certificates where id = $1', [id]);
+      const old = await q.one<any>('select enrollment_id, issued_at, expires_at, status from certificates where id = $1 for update', [id]);
       if (!old) throw new NotFoundException();
+      // a reissue corrects a certificate; it must not bring back an expired one or hand one to someone who did not pass
+      if (old.expires_at && String(old.expires_at).slice(0, 10) < new Date().toISOString().slice(0, 10)) throw new ConflictException('This certificate has expired. It cannot be reissued: the trainee must renew by completing the course again.');
+      const res = await q.one<any>('select status from results where enrollment_id = $1', [old.enrollment_id]);
+      if (!res || res.status !== 'pass') throw new ConflictException('This trainee does not hold a pass for this programme, so a certificate cannot be reissued');
       await this.certs.revoke(q, id, actor, `Reissued: ${reason}`, { notify: false });
-      const fresh = await this.certs.issue(q, old.enrollment_id, actor);
+      const fresh = await this.certs.issue(q, old.enrollment_id, actor, { issued_at: String(old.issued_at).slice(0, 10), expires_at: old.expires_at ? String(old.expires_at).slice(0, 10) : null });
       // one message about the replacement, and only once the trainee has been shown their result
       const shown = await q.one<any>('select 1 from results where enrollment_id = $1 and released', [old.enrollment_id]);
       if (shown) await this.notify.notify({ userId: fresh.trainee_id, kind: 'certificate.reissued', subject: `Certificate reissued: ${fresh.number}`,
@@ -156,7 +162,7 @@ export class CertificatesController {
   @Require('certificates:issue')
   async updateTemplate(@Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
     parse(uuid, id);
-    const d = parse(templateBody.partial(), body);
+    const d = parse(patchOf(templateBody), body);
     return this.db.tx(async (q) => {
       const before = await q.one<any>('select * from certificate_templates where id = $1 for update', [id]);
       if (!before) throw new NotFoundException();

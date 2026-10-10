@@ -117,8 +117,11 @@ export class ResultsController {
       if (!r.finalised) throw new ConflictException('This result is not finalised yet. Recompute it instead.');
       if (d.status === 'pending') throw new BadRequestException('A finalised result cannot go back to pending');
       const t = await this.settings.training(q);
-      if (t.enforce_maker_checker && r.finalised_by === u.id && u.role !== 'super_admin') {
-        throw new ForbiddenException('A different administrator must approve a change to a result you finalised');
+      if (t.enforce_maker_checker) {
+        if (r.finalised_by === u.id) throw new ForbiddenException('A different administrator must approve a change to a result you finalised');
+        // nor can the person who produced the evidence rewrite the outcome
+        const en0 = await q.one<any>('select trainee_id, programme_id from enrollments where id = $1', [r.enrollment_id]);
+        if (await this.touchedEvidence(q, u.id, en0.trainee_id, en0.programme_id)) throw new ForbiddenException('You marked this trainee\'s work or recorded their attendance, so another administrator must change the result');
       }
       const after = await q.one<any>('update results set status = $2, final_score = coalesce($3, final_score) where id = $1 returning *', [id, d.status, d.final_score ?? null]);
       await q.query(
@@ -179,6 +182,18 @@ export class ResultsController {
     if (!ok) throw new NotFoundException();
   }
 
+  /** True when this person marked the trainee's exam work, or, for a programme decided by attendance alone, recorded that attendance (the maker in maker-checker). */
+  private async touchedEvidence(q: Q, userId: string, traineeId: string, programmeId: string) {
+    return !!(await q.one(
+      `select 1 from exam_attempts x join assessments a on a.id = x.assessment_id
+        where x.trainee_id = $1 and a.programme_id = $2 and (x.marked_by = $3 or exists (select 1 from attempt_answers aa where aa.attempt_id = x.id and aa.marked_by = $3))
+       union all
+       select 1 from attendance t join sessions s on s.id = t.session_id
+        where t.trainee_id = $1 and s.programme_id = $2 and t.marked_by = $3 and t.method = 'manual'
+          and not exists (select 1 from assessments a where a.programme_id = $2 and a.status in ('published','closed') and a.kind in ('exam','practical'))
+       limit 1`, [traineeId, programmeId, userId]));
+  }
+
   private async finaliseOne(q: Q, u: AuthUser, actor: Actor, resultId: string, remarks?: string) {
     const r = await q.one<any>(
       `select r.*, e.id as enrollment_id, e.trainee_id, e.programme_id, p.end_date, p.status as pstatus
@@ -191,11 +206,7 @@ export class ResultsController {
 
     const t = await this.settings.training(q);
     if (t.enforce_maker_checker) {
-      const marked = await q.one(
-        `select 1 from exam_attempts x join assessments a on a.id = x.assessment_id
-          where x.trainee_id = $1 and a.programme_id = $2 and (x.marked_by = $3 or exists (select 1 from attempt_answers aa where aa.attempt_id = x.id and aa.marked_by = $3)) limit 1`,
-        [r.trainee_id, r.programme_id, u.id]);
-      if (marked) throw new ForbiddenException('You marked this trainee\'s work, so another administrator must finalise the result');
+      if (await this.touchedEvidence(q, u.id, r.trainee_id, r.programme_id)) throw new ForbiddenException('You marked this trainee\'s work or recorded their attendance, so another administrator must finalise the result');
     }
 
     const after = await q.one<any>(

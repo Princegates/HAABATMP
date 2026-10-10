@@ -256,13 +256,14 @@ test('5. results: computed from evidence, maker-checker, certificate issued once
   refused(await a1.post(`/results/${S.r2}/override`, { status: 'pass', reason: 'short' }), 400, 'reason too short');
   refused(await a2.post(`/results/${S.r2}/override`, { status: 'pass', reason: 'I finalised this one myself.' }), 403, 'the finaliser cannot override their own result');
   refused(await a1.post(`/results/${S.r1}/override`, { status: 'fail', reason: 'Re-marked after appeal, essay scored lower.' }), 403, 'the finaliser cannot override their own result');
-  const ov = ok(await a1.post(`/results/${S.r2}/override`, { status: 'pass', final_score: 72, reason: 'Appeal upheld after re-marking, attendance excused by medical note.' }));
+  refused(await a1.post(`/results/${S.r2}/override`, { status: 'pass', final_score: 72, reason: 'I marked this work, so I should not decide the outcome.' }), 403, 'the marker cannot override the result either');
+  const ov = ok(await api(S.sa).post(`/results/${S.r2}/override`, { status: 'pass', final_score: 72, reason: 'Appeal upheld after re-marking, attendance excused by medical note.' }));
   assert.equal(ov.status, 'pass');
   const changes = ok(await a1.get(`/results/${S.r2}/changes`));
   assert.equal(changes.length, 1); assert.equal(changes[0].old_status, 'fail');
   const certT2 = (await db.query(`select number from certificates where trainee_id = $1 and status = 'valid'`, [S.t2])).rows;
   assert.equal(certT2.length, 1, 'overriding to pass issues a certificate');
-  ok(await a1.post(`/results/${S.r2}/override`, { status: 'fail', reason: 'Appeal overturned on review by the board.' }));
+  ok(await api(S.sa).post(`/results/${S.r2}/override`, { status: 'fail', reason: 'Appeal overturned on review by the board.' }));
   assert.equal((await db.query(`select count(*)::int n from certificates where trainee_id = $1 and status = 'valid'`, [S.t2])).rows[0].n, 0, 'moving away from pass revokes the certificate');
 });
 
@@ -788,12 +789,19 @@ test('23. instructors can register trainees from an Excel list, on programmes th
   assert.equal(refusedEnrol.enrolled.length, 0, 'they cannot register people on a programme they do not teach');
   assert.equal(refusedEnrol.failed.length, 2);
   // the same list again: nobody is duplicated, the existing accounts are recognised
-  const again = ok(await upload(S.tok_instr, list, { organization_id: S.orgA, commit: 'true' }));
+  refused(await upload(S.tok_instr, list, { organization_id: S.orgA, commit: 'true' }), 400, 'an instructor must name a programme they teach');
+  const again = ok(await upload(S.tok_instr, list, { organization_id: S.orgA, programme_id: mine.id, commit: 'true' }));
   assert.equal(again.created, 0); assert.equal(again.existing, 2);
   assert.equal(ok(await a1.get(`/users?q=${tag}&limit=10`)).data.length, 2);
   // CSV works too
   const csv = Buffer.from(`Full name,Email\nCsv Person ${tag},csv.${tag}@example.com\n`);
-  assert.equal(ok(await upload(S.tok_instr, csv, { organization_id: S.orgA, commit: 'true' }, 'list.csv')).created, 1);
+  assert.equal(ok(await upload(S.tok_instr, csv, { organization_id: S.orgA, programme_id: mine.id, commit: 'true' }, 'list.csv')).created, 1);
+  // the same email in another client: an instructor learns nothing about that account, staff do
+  const other = Buffer.from(`Full name,Email\nElsewhere ${tag},csv.${tag}@example.com\n`);
+  const prevI = ok(await upload(S.tok_instr, other, { organization_id: S.orgB, programme_id: mine.id }, 'o.csv'));
+  assert.equal(prevI.rows[0].status, 'invalid'); assert.equal(prevI.rows[0].existing_id, null, 'no account id is revealed to an instructor');
+  const prevS = ok(await upload(S.tok_a1, other, { organization_id: S.orgB }, 'o.csv'));
+  assert.equal(prevS.rows[0].status, 'existing', 'staff can see it');
 });
 
 test('24. the Super Admin can delete what was added, but never the official record', async () => {

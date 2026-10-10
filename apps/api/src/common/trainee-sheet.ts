@@ -1,3 +1,4 @@
+import { assertSafeZip } from './zip-guard';
 import ExcelJS from 'exceljs';
 import { z } from 'zod';
 
@@ -46,6 +47,7 @@ export async function readTraineeSheet(file: Buffer, filename: string): Promise<
       await wb.csv.read(Readable.from(file));
     } else {
       if (file.length < 4 || file[0] !== 0x50 || file[1] !== 0x4b) throw new Error('not xlsx');
+      await assertSafeZip(file, 'Excel file', { entries: 300, bytes: 40 * 1024 * 1024 });
       await wb.xlsx.load(file as any);
     }
   } catch {

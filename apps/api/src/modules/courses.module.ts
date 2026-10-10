@@ -5,7 +5,7 @@ import { AuditService } from '../common/audit.service';
 import { Db, Q } from '../common/db.service';
 import { ActorCtx, CurrentUser, Require } from '../common/decorators';
 import { isStaff } from '../common/scope';
-import { isoDate, pageQuery, parse, uuid } from '../common/validation';
+import { isoDate, pageQuery, parse, uuid, patchOf } from '../common/validation';
 
 const categoryBody = z.object({
   code: z.string().trim().toUpperCase().regex(/^[A-Z]{2,5}$/, 'two to five capital letters'),
@@ -37,7 +37,7 @@ const listQuery = pageQuery.extend({ status: z.enum(['draft', 'active', 'archive
 const materialBody = z.object({
   title: z.string().trim().min(2).max(200),
   kind: z.enum(['video', 'pdf', 'presentation', 'document', 'audio', 'image', 'scorm', 'link']),
-  url: z.string().url().max(2000).nullish(),
+  url: z.string().url().max(2000).refine((u) => /^https?:\/\//i.test(u), 'Use a web address that starts with http:// or https://').nullish(),
   document_id: uuid.nullish(),
   required: z.boolean().default(true),
   position: z.number().int().min(0).default(0),
@@ -70,7 +70,7 @@ export class CoursesController {
   @Require('courses:write')
   async updateCategory(@Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
     parse(uuid, id);
-    const d = parse(categoryBody.partial().omit({ code: true }), body);
+    const d = parse(patchOf(categoryBody.omit({ code: true })), body);
     return this.db.tx(async (q) => {
       const before = await q.one('select * from course_categories where id = $1 for update', [id]);
       if (!before) throw new NotFoundException();
@@ -178,7 +178,13 @@ export class CoursesController {
            from course_modules m left join learning_materials l on l.module_id = m.id
           where m.course_id = $1 group by m.id order by m.position, m.created_at`, [id]),
     ]);
-    return { ...course, prerequisites, instructors, modules };
+    // the reading list is for people on the course: staff, auditors, instructors, and trainees confirmed on a programme of it
+    let seesMaterials = isStaff(u) || u.role === 'auditor' || u.role === 'instructor';
+    if (!seesMaterials && u.role === 'trainee') {
+      seesMaterials = !!(await this.db.one(
+        `select 1 from enrollments e join programmes p on p.id = e.programme_id where p.course_id = $1 and e.trainee_id = $2 and e.status in ('confirmed','completed') limit 1`, [id, u.id]));
+    }
+    return { ...course, prerequisites, instructors, modules: seesMaterials ? modules : modules.map((m: any) => ({ ...m, materials: [] })) };
   }
 
   @Post('courses')
@@ -201,7 +207,7 @@ export class CoursesController {
   @Require('courses:write')
   async update(@Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
     parse(uuid, id);
-    const d = parse(courseBody.partial(), body);
+    const d = parse(patchOf(courseBody), body);
     return this.db.tx(async (q) => {
       const before = await q.one<any>('select * from courses where id = $1 for update', [id]);
       if (!before) throw new NotFoundException();

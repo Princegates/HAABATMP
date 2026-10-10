@@ -26,3 +26,17 @@ export const pageQuery = z.object({
 export function isUuid(v: unknown): v is string {
   return typeof v === 'string' && uuid.safeParse(v).success;
 }
+
+/**
+ * The schema for a PATCH: every field optional, and a field that was not sent stays absent. zod 4's `.partial()` still
+ * applies `.default()` values, so a request that only changed a title would silently reset fee, status, pass mark and so on.
+ * Use this instead of `.partial()` on any schema that has defaults.
+ */
+export function patchOf<T extends z.ZodObject<any>>(schema: T) {
+  const shape: Record<string, ZodTypeAny> = {};
+  for (const [key, field] of Object.entries(schema.shape as Record<string, any>)) {
+    const def = field?._zod?.def;
+    shape[key] = (def?.type === 'default' || def?.type === 'prefault' ? def.innerType : field).optional();
+  }
+  return z.object(shape) as unknown as z.ZodType<Partial<z.output<T>>>;
+}

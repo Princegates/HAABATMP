@@ -4,7 +4,7 @@ import { Actor, AuthUser } from '../common/auth.types';
 import { AuditService } from '../common/audit.service';
 import { Db } from '../common/db.service';
 import { ActorCtx, CurrentUser, Require } from '../common/decorators';
-import { seesAllClients } from '../common/scope';
+import { requireOrgScope, seesAllClients } from '../common/scope';
 import { SettingsService } from '../common/settings.service';
 import { pageQuery, parse, uuid } from '../common/validation';
 
@@ -76,10 +76,13 @@ export class ComplianceController {
 
   @Get('requirements')
   @Require('compliance:read')
-  requirements() {
+  requirements(@CurrentUser() u: AuthUser) {
+    // a client administrator sees the requirements that apply to everyone and those set for their own organisation, no one else's
+    const own = seesAllClients(u) ? null : requireOrgScope(u);
     return this.db.query(
       `select r.*, c.code as course_code, c.title as course_title, o.name as organization_name from compliance_requirements r join courses c on c.id = r.course_id
-         left join organizations o on o.id = r.organization_id order by c.code`);
+         left join organizations o on o.id = r.organization_id
+        where ($1::uuid is null or r.organization_id is null or r.organization_id = $1) order by c.code`, [own]);
   }
 
   @Post('requirements')
@@ -107,7 +110,7 @@ export class ComplianceController {
 
   /** Client administrators are pinned to their own organisation whatever they ask for. */
   private orgScope(u: AuthUser, requested?: string): string | undefined {
-    if (!seesAllClients(u)) return u.organizationId ?? undefined;
+    if (!seesAllClients(u)) return requireOrgScope(u);
     return requested || undefined;
   }
 }

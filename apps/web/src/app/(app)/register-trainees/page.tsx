@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { api, ApiError, useApi } from '@/lib/api';
 import { Badge, Card, ErrorNote, Loading, PageHead } from '@/components/ui';
 import { date } from '@/lib/format';
+import { useAuth } from '@/lib/auth';
 
 interface Row { row: number; email: string; full_name: string; phone: string | null; aviation_role: string | null; employer: string | null; status: 'new' | 'existing' | 'invalid' | 'duplicate'; notes: string[] }
 interface Preview { total: number; new: number; existing: number; skipped: number; rows: Row[]; can_import: boolean }
@@ -11,6 +12,8 @@ interface Result { created: number; existing: number; skipped: number; failed: {
 
 /** Upload an Excel list of trainees: check it, then register them. Optionally put everyone on a programme in the same step. */
 export default function RegisterTrainees() {
+  const { is } = useAuth();
+  const staff = is('super_admin', 'training_admin');
   const options = useApi<{ organizations: { id: string; name: string }[]; programmes: { id: string; code: string; title: string; start_date: string; end_date: string; organization_id: string | null }[] }>('/trainees/register-options');
   const [org, setOrg] = useState('');
   const [prog, setProg] = useState('');
@@ -74,15 +77,15 @@ export default function RegisterTrainees() {
             <div className="field"><label htmlFor="rt-org">Organisation</label>
               <select id="rt-org" value={org} onChange={(e) => { setOrg(e.target.value); setPreview(null); }}><option value="">Individuals (no organisation)</option>{o.organizations.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
               <span className="help">The client these trainees work for. Trainees are kept separate by organisation.</span></div>
-            <div className="field"><label htmlFor="rt-prog">Also register them on a programme</label>
-              <select id="rt-prog" value={prog} onChange={(e) => { setProg(e.target.value); setPreview(null); }}><option value="">No, just create their accounts</option>{o.programmes.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.title} ({date(p.start_date)})</option>)}</select>
+            <div className="field"><label htmlFor="rt-prog">{staff ? 'Also register them on a programme' : 'Programme they are joining'}</label>
+              <select id="rt-prog" value={prog} onChange={(e) => { setProg(e.target.value); setPreview(null); }}>{staff && <option value="">No, just create their accounts</option>}{!staff && <option value="">Choose a programme you teach</option>}{o.programmes.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.title} ({date(p.start_date)})</option>)}</select>
               <span className="help">{o.programmes.length ? 'Only programmes you teach are listed.' : 'No programmes you teach are open for registration right now.'}</span></div>
             <div className="field full"><label htmlFor="rt-file">Excel file (.xlsx) or CSV</label>
               <input id="rt-file" type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setPreview(null); setError(''); }} />
               <span className="help">Up to 5 MB and 500 trainees. Headings: Full name, Email, Phone, Job role, Employer.</span></div>
           </div>
           {error && <div className="alert danger" role="alert">{error}</div>}
-          {!preview && <div><button className="btn" disabled={busy || !file} onClick={() => send(false)}>{busy ? 'Reading…' : 'Check file'}</button></div>}
+          {!preview && <div><button className="btn" disabled={busy || !file || (!staff && !prog)} onClick={() => send(false)}>{busy ? 'Reading…' : 'Check file'}</button></div>}
         </div>
       </Card>
       {preview && (

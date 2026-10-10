@@ -7,7 +7,7 @@ import { computeResult } from '../common/result-compute';
 import { ActorCtx, CurrentUser, Require } from '../common/decorators';
 import { NotifyService } from '../common/notify.service';
 import { isStaff, seesAllClients } from '../common/scope';
-import { isoDate, isoDateTime, pageQuery, parse, uuid } from '../common/validation';
+import { isoDate, isoDateTime, pageQuery, parse, uuid, patchOf } from '../common/validation';
 
 const STATUSES = ['draft', 'open_for_registration', 'registration_closed', 'ongoing', 'completed', 'cancelled'] as const;
 const TRANSITIONS: Record<string, string[]> = {
@@ -175,7 +175,7 @@ export class ProgrammesController {
   @Require('programmes:write')
   async update(@Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
     parse(uuid, id);
-    const d = parse(programmeBody.omit({ course_id: true, code: true }).partial(), body);
+    const d = parse(patchOf(programmeBody.omit({ course_id: true, code: true })), body);
     return this.db.tx(async (q) => {
       const before = await q.one<any>('select * from programmes where id = $1 for update', [id]);
       if (!before) throw new NotFoundException();
@@ -261,7 +261,7 @@ export class ProgrammesController {
   @Require('programmes:write')
   async updateSession(@Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
     parse(uuid, id);
-    const d = parse(sessionBody.partial(), body);
+    const d = parse(patchOf(sessionBody), body);
     return this.db.tx(async (q) => {
       const before = await q.one<any>('select * from sessions where id = $1 for update', [id]);
       if (!before) throw new NotFoundException();

@@ -17,7 +17,7 @@ import { NotifyService } from '../common/notify.service';
 import { SettingsService } from '../common/settings.service';
 import { Throttle } from '@nestjs/throttler';
 import { CAN_CREATE_ROLES, ROLES, Role } from '../common/permissions';
-import { isStaff, seesAllClients } from '../common/scope';
+import { isStaff, requireOrgScope, seesAllClients } from '../common/scope';
 import { isoDate, pageQuery, parse, uuid } from '../common/validation';
 
 const profileBody = z.object({
@@ -111,7 +111,7 @@ export class UsersController {
   @Get('users/by-organization')
   @Require('users:read')
   async byOrganization(@CurrentUser() u: AuthUser) {
-    const own = seesAllClients(u) ? null : u.organizationId;
+    const own = seesAllClients(u) ? null : requireOrgScope(u);
     const orgs = await this.db.query(
       `select o.id as organization_id, o.name, o.type, o.status,
               count(t.id) filter (where t.status <> 'suspended') as trainees,
@@ -308,6 +308,8 @@ export class UsersController {
     const orgId = d.organization_id || null;
     const programmeId = d.programme_id || null;
     if (!file) throw new BadRequestException('Choose an Excel file (.xlsx) to upload');
+    // An instructor registers a class for a programme they teach. Creating accounts with no programme is HAAB staff work.
+    if (!isStaff(u) && !programmeId) throw new BadRequestException('Choose the programme you teach that these trainees are joining');
     if (!/\.(xlsx|csv)$/i.test(file.originalname)) throw new BadRequestException('Only Excel .xlsx or CSV files are accepted. In Excel choose File > Save As > Excel Workbook (.xlsx).');
     if (orgId) await this.assertOrgExists(orgId);
     if (programmeId) {
@@ -334,7 +336,11 @@ export class UsersController {
       else {
         const ex = byEmail.get(r.email);
         if (ex) {
-          if (ex.role !== 'trainee') { status = 'invalid'; notes.push('This email belongs to someone who is not a trainee'); }
+          if (!isStaff(u) && (ex.role !== 'trainee' || ex.status === 'suspended' || ex.organization_id !== orgId)) {
+            // an instructor learns nothing about accounts outside the client they are registering: not who, not what role, not their state
+            status = 'invalid'; notes.push('This email already has an account that cannot be used here. Ask HAAB staff.');
+          }
+          else if (ex.role !== 'trainee') { status = 'invalid'; notes.push('This email belongs to someone who is not a trainee'); }
           else if (ex.status === 'suspended') { status = 'invalid'; notes.push('This trainee account is suspended'); }
           else { status = 'existing'; existingId = ex.id; notes.push(ex.organization_id === orgId ? 'Already has an account' : 'Already has an account, kept as it is'); }
         }
@@ -369,6 +375,7 @@ export class UsersController {
 
   @Post('users/import')
   @Require('users:write')
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   async bulkImport(@CurrentUser() u: AuthUser, @Body() body: unknown, @ActorCtx() actor: Actor) {
     const d = parse(importBody, body);
     let orgId = d.organization_id ?? null;
@@ -429,7 +436,7 @@ export class UsersController {
       const after = await q.one(
         `update users set full_name = coalesce($2, full_name), phone = case when $3 then $4 else phone end,
                 organization_id = case when $5 then $6 else organization_id end, role = coalesce($7, role),
-                can_finalise_results = case when $8::boolean is null then can_finalise_results when $9 <> 'instructor' then false else $8 end
+                can_finalise_results = case when $9 <> 'instructor' then false when $8::boolean is null then can_finalise_results else $8 end
           where id = $1 returning id, email, full_name, phone, role, organization_id, status, can_finalise_results`,
         [id, d.full_name ?? null, 'phone' in d, d.phone ?? null, staffNow || 'organization_id' in d, staffNow ? null : d.organization_id ?? null, d.role ?? null, d.can_finalise_results ?? null, newRole]);
       await this.audit.log(q, actor, 'user.update', 'user', id, pickUser(target), after);

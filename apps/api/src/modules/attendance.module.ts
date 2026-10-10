@@ -28,7 +28,8 @@ export class AttendanceController {
          from enrollments e join users t on t.id = e.trainee_id left join organizations o on o.id = t.organization_id
          left join attendance a on a.session_id = $1 and a.trainee_id = t.id
         where e.programme_id = $2 and e.status in ('confirmed','completed') order by t.full_name`, [id, s.programme_id]);
-    return { session: s, roster: rows };
+    const { qr_secret: _secret, ...session } = s; // the secret behind the check-in codes never leaves the server
+    return { session, roster: rows };
   }
 
   @Put('sessions/:id/attendance')
@@ -88,8 +89,10 @@ export class AttendanceController {
 
     const status = now > new Date(s.starts_at).getTime() + LATE_AFTER_MS ? 'late' : 'present';
     return this.db.tx(async (q) => {
-      const prev = await q.one<any>('select status from attendance where session_id = $1 and trainee_id = $2 for update', [sid, u.id]);
+      const prev = await q.one<any>('select status, method from attendance where session_id = $1 and trainee_id = $2 for update', [sid, u.id]);
       if (prev && (prev.status === 'present' || prev.status === 'late')) return { status: prev.status, already: true };
+      // a decision staff made by hand stands: scanning later does not overwrite it
+      if (prev && prev.method === 'manual') return { status: prev.status, already: true };
       await q.query(
         `insert into attendance (session_id, trainee_id, status, method, marked_by, latitude, longitude) values ($1,$2,$3,'qr',$2,$4,$5)
          on conflict (session_id, trainee_id) do update set status = excluded.status, method = 'qr', marked_by = excluded.marked_by, marked_at = now(), latitude = excluded.latitude, longitude = excluded.longitude`,
