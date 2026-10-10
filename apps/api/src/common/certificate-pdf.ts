@@ -177,21 +177,11 @@ export async function renderCertificate(v: CertificateView): Promise<Buffer> {
       centred(`and ${v.moreModules} more topic${v.moreModules === 1 ? '' : 's'}`, y, f.serifI, 10.5, MUTED);
       y += 14;
     }
-  } else {
-    centred('PROGRAMME DETAILS', y, f.sansB, 9.5, GREEN, { characterSpacing: 2 });
-    y += 18;
-    const facts = [`${v.trainingHours} training hours`, v.passMark != null ? `Pass mark ${v.passMark}%` : '', v.minAttendance != null ? `Attendance ${v.minAttendance}% minimum` : ''].filter(Boolean).join('     |     ');
-    centred(facts, y, f.sans, 10.5, TEXT);
-    y += 16;
   }
 
   // footnote
-  const foot = [
-    `Awarded on satisfactory completion of ${v.programmeCode ? `programme ${v.programmeCode}` : 'the programme'}`
-      + `${v.passMark != null ? `, pass mark ${v.passMark}%` : ''}${v.minAttendance != null ? `, minimum attendance ${v.minAttendance}%` : ''}, ${v.trainingHours} training hours.`,
-    v.footerText,
-  ].filter(Boolean).join(' ');
-  doc.font(f.serifI).fontSize(9.5).fillColor(MUTED).text(foot, 90, y + 4, { width: W - 180, align: 'center' });
+  // only text the template itself carries; the programme facts are not repeated here
+  if (v.footerText) doc.font(f.serifI).fontSize(9.5).fillColor(MUTED).text(v.footerText, 90, y + 4, { width: W - 180, align: 'center' });
 
   // footer
   const footTop = B - 6 - 28 - 108;
