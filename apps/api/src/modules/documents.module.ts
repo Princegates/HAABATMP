@@ -126,10 +126,11 @@ export class DocumentsController {
 
   @Delete(':id')
   @Require('documents:delete')
-  async remove(@Param('id') id: string, @ActorCtx() actor: Actor) {
+  async remove(@CurrentUser() u: AuthUser, @Param('id') id: string, @ActorCtx() actor: Actor) {
     parse(uuid, id);
     const doc = await this.db.tx(async (q) => {
-      const row = await q.one<any>('delete from documents where id = $1 returning *', [id]);
+      // finance and training are kept apart: only a super administrator can remove a financial document
+      const row = await q.one<any>(`delete from documents where id = $1 and ($2 or category <> 'financial') returning *`, [id, u.role === 'super_admin']);
       if (!row) throw new NotFoundException();
       await this.audit.log(q, actor, 'document.delete', 'document', id, { category: row.category, filename: row.filename }, null);
       return row;

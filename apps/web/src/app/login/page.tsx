@@ -11,7 +11,11 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get('next');
-  const safeNext = next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
+  // only ever go to a page on this site: browsers treat a backslash like a slash, so /\evil.example would leave it
+  const safeNext = (() => {
+    if (!next || !next.startsWith('/') || typeof window === 'undefined') return '/';
+    try { const u = new URL(next, window.location.origin); return u.origin === window.location.origin ? u.pathname + u.search : '/'; } catch { return '/'; }
+  })();
   const [stage, setStage] = useState<Stage>({ kind: 'password' });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

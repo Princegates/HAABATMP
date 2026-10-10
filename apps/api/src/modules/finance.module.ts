@@ -13,6 +13,9 @@ import { SettingsService } from '../common/settings.service';
 import { round2 } from '../common/util';
 import { isoDate, pageQuery, parse, uuid } from '../common/validation';
 
+/** money has at most two decimal places, so what is stored always equals what was typed */
+const cents = (v: number) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-6;
+
 const STATUSES = ['pending', 'partially_paid', 'paid', 'failed', 'refunded', 'cancelled'] as const;
 const METHODS = ['cash', 'bank_transfer', 'mobile_money', 'card', 'cheque', 'other'] as const;
 
@@ -70,7 +73,7 @@ export class FinanceController {
       organization_id: uuid.nullish(), trainee_id: uuid.nullish(), programme_id: uuid.nullish(), enrollment_id: uuid.nullish(),
       due_date: isoDate.nullish(), purchase_order: z.string().trim().max(100).nullish(), notes: z.string().trim().max(1000).nullish(),
       tax_rate: z.number().min(0).max(100).optional(),
-      items: z.array(z.object({ description: z.string().trim().min(2).max(300), quantity: z.number().positive().max(10000), unit_price: z.number().min(0).max(1e8) })).min(1).max(50),
+      items: z.array(z.object({ description: z.string().trim().min(2).max(300), quantity: z.number().positive().max(10000).refine(cents, 'Use at most two decimal places'), unit_price: z.number().min(0).max(1e8).refine(cents, 'Use at most two decimal places') })).min(1).max(50),
     }), body);
     if (!d.organization_id && !d.trainee_id) throw new BadRequestException('Choose who to bill: an organisation or a trainee');
     const fin = await this.settings.finance();
@@ -111,7 +114,7 @@ export class FinanceController {
   async pay(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
     parse(uuid, id);
     const d = parse(z.object({
-      amount: z.number().positive().max(1e9), method: z.enum(METHODS), reference: z.string().trim().max(200).nullish(),
+      amount: z.number().positive().max(1e9).refine(cents, 'Use at most two decimal places'), method: z.enum(METHODS), reference: z.string().trim().max(200).nullish(),
       received_at: z.string().datetime({ offset: true }).optional(), note: z.string().trim().max(500).nullish(),
     }), body);
     const pm = await this.settings.get<{ methods: { key: string; enabled: boolean }[] }>('payment_methods');

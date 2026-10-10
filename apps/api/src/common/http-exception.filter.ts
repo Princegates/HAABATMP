@@ -22,7 +22,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
     const pg = err?.code && PG_MAP[err.code];
     if (pg) {
-      return res.status(pg.status).json({ statusCode: pg.status, message: pg.message, constraint: err.constraint });
+      return res.status(pg.status).json({ statusCode: pg.status, message: pg.message });
     }
     this.log.error(err?.stack ?? String(err));
     res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ statusCode: 500, message: 'Something went wrong on our side' });

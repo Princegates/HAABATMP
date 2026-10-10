@@ -949,3 +949,58 @@ test('27. Public Access: organisations pay for now, and the Super Admin can open
   refused(await me.get('/invoices'), 403);
   ok(await sa.put('/settings/pages/trainee_access', { show_finance: true }));
 });
+
+test('28. security fixes: partial updates, secrets, question bank scope, sealed marks, reissue dates, safe links', async () => {
+  const a1 = api(S.tok_a1); const sa = api(S.sa); const instr = api(S.tok_instr);
+  // a PATCH that sends one field leaves every other field alone
+  const org = ok(await sa.post('/organizations', { name: `Keep ${run}`, type: 'airline' }));
+  ok(await sa.patch(`/organizations/${org.id}`, { status: 'inactive' }));
+  ok(await sa.patch(`/organizations/${org.id}`, { contact_phone: '123' }));
+  const o2 = ok(await sa.get(`/organizations/${org.id}`));
+  assert.equal(o2.status, 'inactive', 'editing a phone number does not reactivate a client'); assert.equal(o2.type, 'airline');
+  const cat = ok(await a1.post('/course-categories', { code: letters(3), name: `Patch ${run}` }));
+  const course = ok(await a1.post('/courses', { code: `PT-${run}`.toUpperCase(), title: 'Patch course', category_id: cat.id, duration_hours: 8, fee: 500, pass_mark: 80, min_attendance_pct: 90, status: 'active' }));
+  ok(await a1.patch(`/courses/${course.id}`, { title: 'Patch course renamed' }));
+  const c2 = ok(await a1.get(`/courses/${course.id}`));
+  assert.equal(c2.title, 'Patch course renamed'); assert.equal(Number(c2.fee), 500); assert.equal(c2.pass_mark, 80); assert.equal(c2.status, 'active', 'a rename does not reset fee, pass mark or status');
+
+  // the QR secret never leaves the server
+  const sess = (await db.query('select id from sessions limit 1')).rows[0];
+  const roster = ok(await sa.get(`/sessions/${sess.id}/attendance`));
+  assert.ok(!('qr_secret' in roster.session), 'the roster does not carry the secret behind the check-in codes');
+  assert.ok(!JSON.stringify(roster).includes('qr_secret'));
+
+  // an instructor works only on the question bank of courses they teach
+  refused(await instr.post('/questions', { course_id: course.id, type: 'true_false', prompt: 'Not my course, is it?', answer: true }), 403, 'instructor on a course they do not teach');
+  refused(await instr.get(`/questions?course_id=${course.id}`), 403, 'cannot read another course\'s answers');
+  ok(await a1.post('/questions', { course_id: course.id, type: 'true_false', prompt: `Visible only to staff ${run}`, answer: true }));
+  const mine = ok(await instr.get('/questions')).data;
+  assert.ok(!mine.some((x) => x.prompt.includes('Visible only to staff')), 'an unscoped list shows only the instructor\'s own courses');
+
+  // links are http(s) only
+  const mod = ok(await a1.post(`/courses/${course.id}/modules`, { title: 'Links', position: 0 }));
+  refused(await a1.post(`/modules/${mod.id}/materials`, { title: 'Bad', kind: 'link', url: 'javascript:alert(1)' }), 400, 'javascript: link');
+  refused(await a1.post(`/modules/${mod.id}/materials`, { title: 'Bad2', kind: 'link', url: 'data:text/html,<script>1</script>' }), 400, 'data: link');
+  ok(await a1.post(`/modules/${mod.id}/materials`, { title: 'Fine', kind: 'link', url: 'https://example.com/read' }));
+
+  // a certificate reissue keeps its dates and is refused once expired
+  const cert = (await db.query(`select id, issued_at, expires_at from certificates where status = 'valid' and expires_at is not null limit 1`)).rows[0];
+  if (cert) {
+    const fresh = ok(await a1.post(`/certificates/${cert.id}/reissue`, { reason: 'Corrected spelling of the name' }));
+    assert.equal(String(fresh.issued_at).slice(0, 10), String(cert.issued_at).slice(0, 10), 'issue date unchanged');
+    assert.equal(String(fresh.expires_at).slice(0, 10), String(cert.expires_at).slice(0, 10), 'expiry unchanged');
+    await db.query(`update certificates set expires_at = current_date - 5 where id = $1`, [fresh.id]);
+    refused(await a1.post(`/certificates/${fresh.id}/reissue`, { reason: 'Trying to renew an expired one' }), 409, 'expired certificates cannot be reissued');
+    await db.query(`update certificates set expires_at = current_date + 400 where id = $1`, [fresh.id]);
+  }
+
+  // marks are sealed once the result is finalised
+  const sealed = (await db.query(`select x.id from exam_attempts x join assessments a on a.id = x.assessment_id join enrollments e on e.programme_id = a.programme_id and e.trainee_id = x.trainee_id join results r on r.enrollment_id = e.id where r.finalised and x.status = 'marked' limit 1`)).rows[0];
+  if (sealed) {
+    const q1 = (await db.query(`select question_id from attempt_answers where attempt_id = $1 limit 1`, [sealed.id])).rows[0];
+    refused(await sa.put(`/attempts/${sealed.id}/mark`, { marks: [{ question_id: q1.question_id, awarded_marks: 0 }] }), 409, 'marks cannot change after finalising');
+  }
+  // money has at most two decimals
+  const inv = (await db.query(`select id from invoices where status in ('pending','partially_paid') limit 1`)).rows[0];
+  if (inv) refused(await api(S.tok_fin).post(`/invoices/${inv.id}/payments`, { amount: 10.001, method: 'cash' }), 400, 'three decimal places');
+});

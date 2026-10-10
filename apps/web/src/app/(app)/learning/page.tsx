@@ -20,7 +20,7 @@ function Course({ c }: { c: any }) {
             <div key={m.id}><h3 style={{ marginBottom: 8 }}>{m.title}</h3>
               {m.materials.length === 0 ? <span className="muted">Nothing in this module yet.</span> : <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>{m.materials.map((l: any) => (
                 <li key={l.id} className="row between" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-                  <span>{l.url ? <a href={l.url} target="_blank" rel="noopener noreferrer" onClick={async () => { if (l.status === 'not_started') { await api.put(`/materials/${l.id}/progress`, { status: 'in_progress' }); d.reload(); } }}>{l.title}</a> : l.title} <span className="muted">· {label(l.kind)}</span> {l.required && <Badge tone="neutral">Required</Badge>}</span>
+                  <span>{l.url && /^https?:\/\//i.test(l.url) ? <a href={l.url} target="_blank" rel="noopener noreferrer" onClick={async () => { if (l.status === 'not_started') { await api.put(`/materials/${l.id}/progress`, { status: 'in_progress' }); d.reload(); } }}>{l.title}</a> : l.title} <span className="muted">· {label(l.kind)}</span> {l.required && <Badge tone="neutral">Required</Badge>}</span>
                   <label className="check"><input type="checkbox" checked={l.status === 'completed'} onChange={async (e) => { await api.put(`/materials/${l.id}/progress`, { status: e.target.checked ? 'completed' : 'in_progress' }); toast(e.target.checked ? 'Marked as done' : 'Marked as not done'); d.reload(); }} /><span>Done</span></label>
                 </li>))}</ul>}</div>
           ))}

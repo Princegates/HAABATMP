@@ -212,6 +212,8 @@ export class UsersController {
       phone: z.string().trim().max(50).optional(), organisation: z.string().trim().max(200).optional(),
       website: z.string().max(200).optional(), // hidden field; only automated form-fillers complete it
     }), body);
+    // what the person typed goes into an email and a notice to staff from HAAB's own sender: keep it to one plain line, without links
+    d.full_name = d.full_name.replace(/\s+/g, ' ').replace(/https?:\/\/\S+|www\.\S+/gi, '[link removed]').trim();
     const reply = { ok: true, message: 'Thank you. Your request has been received. If it is approved, you will get an email with a link to choose your password.' };
     if (d.website) return reply;
     if (await this.db.one('select 1 from users where lower(email) = lower($1)', [d.email])) return reply;

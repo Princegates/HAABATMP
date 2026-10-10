@@ -50,6 +50,17 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     throw new Error(`Invalid environment: ${issues}`);
   }
   const env = parsed.data;
+  // Dev sign-in has one shared password and a published signing key. It must never run against a real database, even if
+  // someone forgets to set NODE_ENV: refuse it unless the database is on this machine.
+  if (env.AUTH_MODE === 'dev') {
+    let host = '';
+    try { host = new URL(env.DATABASE_URL).hostname; } catch { /* a malformed URL fails below when it is used */ }
+    if (!['localhost', '127.0.0.1', '::1', '[::1]', 'db', 'postgres'].includes(host) || source.RENDER) {
+      throw new Error('AUTH_MODE=dev is only allowed with a database on this machine. Set AUTH_MODE=supabase for any hosted environment.');
+    }
+  }
+  // the stand-in key used when none is set is public; any real sign-in setup needs its own
+  if (env.AUTH_MODE === 'supabase' && !env.DATA_ENCRYPTION_KEY) throw new Error('DATA_ENCRYPTION_KEY is required when AUTH_MODE=supabase');
   if (env.NODE_ENV === 'production') {
     const problems: string[] = [];
     if (env.AUTH_MODE === 'dev') problems.push('AUTH_MODE=dev is not allowed in production');
