@@ -221,9 +221,7 @@ export async function renderCertificate(v: CertificateView): Promise<Buffer> {
   // bottom strip
   const stripH = 28, stripY = B - 6 - stripH;
   doc.rect(L + 6, stripY, R - L - 12, stripH).fill(NAVY);
-  let host = '';
-  try { host = new URL(v.verifyUrl).host; } catch { /* ignore */ }
-  const strip = [plain(v.category), plain(v.courseCode), host ? `VERIFY AT ${host}` : '', plain(v.issuer)].filter(Boolean).join('   |   ').toUpperCase();
+  const strip = plain(v.issuer).toUpperCase();
   centred(strip, stripY + 10, f.sansM, fit(strip, f.sansM, 8.5, W - 80, 6, { characterSpacing: 1.8 }), '#c9d4e6', { characterSpacing: 1.8 });
 
   doc.end();
