@@ -12,7 +12,7 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
   const { can } = useAuth();
   const toast = useToast();
   const { data: inv, error, reload } = useApi<any>(`/invoices/${id}`);
-  const methods = useApi<{ methods: { key: string; label: string; enabled: boolean }[] }>(can('payments:write') ? '/settings/pages/payment_methods' : null);
+  const methods = useApi<{ values: { methods: { key: string; label: string; enabled: boolean }[] } }>(can('payments:write') ? '/settings/pages/payment_methods' : null);
   const [pay, setPay] = useState(false);
   const [refund, setRefund] = useState<any | null>(null);
   const [cancel, setCancel] = useState(false);
@@ -39,7 +39,7 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
                 <td className="actions"><button className="btn ghost sm" onClick={() => dl(`/payments/${p.id}/receipt`, `${p.receipt_number}.pdf`)}>Receipt</button>{can('payments:write') && p.status === 'paid' && <button className="btn ghost sm" onClick={() => setRefund(p)}>Refund</button>}</td></tr>))}</tbody></table>)}
         </Card>
       </div>
-      {pay && <FormModal title="Record a payment" size="narrow" fields={[{ name: 'amount', label: `Amount (balance ${money(balance, inv.currency)})`, type: 'number', required: true, min: 0.01, step: 0.01 }, { name: 'method', label: 'Method', type: 'select', required: true, options: (methods.data?.methods ?? []).filter((m) => m.enabled).map((m) => ({ value: m.key, label: m.label })) }, { name: 'reference', label: 'Reference', help: 'Bank reference, mobile money number or cheque number' }, { name: 'note', label: 'Note', type: 'textarea', full: true }]} initial={{ amount: balance, method: 'bank_transfer' }}
+      {pay && <FormModal title="Record a payment" size="narrow" fields={[{ name: 'amount', label: `Amount (balance ${money(balance, inv.currency)})`, type: 'number', required: true, min: 0.01, step: 0.01 }, { name: 'method', label: 'Method', type: 'select', required: true, options: (methods.data?.values.methods ?? []).filter((m) => m.enabled).map((m) => ({ value: m.key, label: m.label })) }, { name: 'reference', label: 'Reference', help: 'Bank reference, mobile money number or cheque number' }, { name: 'note', label: 'Note', type: 'textarea', full: true }]} initial={{ amount: balance, method: 'bank_transfer' }}
         onClose={() => setPay(false)} onSubmit={async (v) => { await api.post(`/invoices/${id}/payments`, v); toast('Payment recorded'); reload(); }} />}
       {refund && <ConfirmModal title="Refund this payment?" message={`${money(refund.amount, inv.currency)} received on ${date(refund.received_at)}. The invoice balance goes back up. Send the money back outside the platform.`} askReason="Reason" danger confirmLabel="Refund" onClose={() => setRefund(null)} onConfirm={async (reason) => { await api.post(`/payments/${refund.id}/refund`, { reason }); toast('Refunded'); reload(); }} />}
       {cancel && <ConfirmModal title="Cancel this invoice?" askReason="Reason" danger confirmLabel="Cancel invoice" onClose={() => setCancel(false)} onConfirm={async (reason) => { await api.post(`/invoices/${id}/cancel`, { reason }); toast('Invoice cancelled'); reload(); }} />}
