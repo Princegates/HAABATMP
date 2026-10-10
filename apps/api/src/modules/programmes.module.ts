@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Actor, AuthUser } from '../common/auth.types';
 import { AuditService } from '../common/audit.service';
 import { Db, Q } from '../common/db.service';
+import { computeResult } from '../common/result-compute';
 import { ActorCtx, CurrentUser, Require } from '../common/decorators';
 import { NotifyService } from '../common/notify.service';
 import { isStaff, seesAllClients } from '../common/scope';
@@ -223,6 +224,8 @@ export class ProgrammesController {
       }
       if (status === 'completed') {
         await q.query(`update enrollments set status = 'completed' where programme_id = $1 and status = 'confirmed'`, [id]);
+        // completing the programme settles its results now, even if some session dates have not been reached
+        for (const e of await q.query<{ id: string }>(`select id from enrollments where programme_id = $1 and status = 'completed'`, [id])) await computeResult(q, e.id);
       }
       await this.audit.log(q, actor, `programme.${status}`, 'programme', id, { status: p.status }, { status, reason });
       return after;

@@ -840,3 +840,33 @@ test('24. the Super Admin can delete what was added, but never the official reco
   const log = (await db.query(`select action from audit_logs where action in ('user.delete','organization.delete','programme.delete')`)).rows.map((r) => r.action);
   for (const a of ['user.delete', 'organization.delete', 'programme.delete']) assert.ok(log.includes(a), `audit has ${a}`);
 });
+
+test('25. completing a programme settles its results even when its session dates have not been reached', async () => {
+  const a1 = api(S.tok_a1);
+  const prog = ok(await a1.post('/programmes', { course_id: S.course.id, start_date: day(40), end_date: day(42), capacity: 5, fee: 0 }));
+  ok(await a1.post(`/programmes/${prog.id}/sessions`, { title: 'Day 1', starts_at: `${day(40)}T09:00:00Z`, ends_at: `${day(40)}T12:00:00Z` }));
+  ok(await a1.post(`/programmes/${prog.id}/status`, { status: 'open_for_registration' }));
+  const enrol = ok(await a1.post(`/programmes/${prog.id}/enrol`, { trainee_ids: [S.t1] }));
+  ok(await a1.post(`/enrollments/${enrol.enrolled[0].id}/confirm`, {}));
+  const q = ok(await a1.post('/questions', { course_id: S.course.id, type: 'true_false', prompt: `Early completion ${run}: runways have numbers.`, answer: true, marks: 1 }));
+  const asm = ok(await a1.post('/assessments', { course_id: S.course.id, programme_id: prog.id, title: `Early ${run}`, duration_minutes: 10, pass_mark: 50, max_attempts: 1 }));
+  ok(await a1.put(`/assessments/${asm.id}/questions`, { items: [{ question_id: q.id }] }));
+  ok(await a1.post(`/assessments/${asm.id}/publish`));
+  const t1 = api(S.tok_T1);
+  const start = ok(await t1.post(`/assessments/${asm.id}/start`));
+  ok(await t1.put(`/attempts/${start.attempt.id}/answers`, { answers: { [q.id]: true } }));
+  ok(await t1.post(`/attempts/${start.attempt.id}/submit`));
+  // before completion nothing is decided
+  ok(await a1.post(`/programmes/${prog.id}/results/compute`));
+  const before = (await db.query('select r.status from results r join enrollments e on e.id = r.enrollment_id where e.programme_id = $1', [prog.id])).rows[0];
+  assert.equal(before.status, 'pending', 'indicative only until the programme ends');
+  // staff complete the programme: no manual recalculation is needed, and the future session date does not hold results back
+  ok(await a1.post(`/programmes/${prog.id}/status`, { status: 'registration_closed' }));
+  ok(await a1.post(`/programmes/${prog.id}/status`, { status: 'ongoing' }));
+  ok(await a1.post(`/programmes/${prog.id}/status`, { status: 'completed' }));
+  const after = (await db.query('select r.status, r.final_score from results r join enrollments e on e.id = r.enrollment_id where e.programme_id = $1', [prog.id])).rows[0];
+  assert.equal(after.status, 'pass'); assert.equal(Number(after.final_score), 100);
+  const fin = ok(await api(S.sa).post(`/programmes/${prog.id}/results/finalise-all`));
+  assert.equal(fin.finalised, 1);
+  ok(await api(S.sa).post(`/programmes/${prog.id}/results/release`));
+});

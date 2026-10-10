@@ -2,12 +2,11 @@ import { BadRequestException, Body, ConflictException, Controller, ForbiddenExce
 import { z } from 'zod';
 import { Actor, AuthUser } from '../common/auth.types';
 import { AuditService } from '../common/audit.service';
-import { attendanceStats } from '../common/attendance';
 import { CertificatesService } from '../common/certificates.service';
 import { Db, Q } from '../common/db.service';
 import { ActorCtx, CurrentUser, Require } from '../common/decorators';
 import { NotifyService } from '../common/notify.service';
-import { decideResult } from '../common/result-rules';
+import { computeResult } from '../common/result-compute';
 import { isStaff, seesAllClients } from '../common/scope';
 import { SettingsService } from '../common/settings.service';
 import { pageQuery, parse, uuid } from '../common/validation';
@@ -190,28 +189,7 @@ export class ResultsController {
   }
 
   /** Evidence gathering around the pure decision rule. Skips finalised results. */
-  private async compute(q: Q, enrollmentId: string) {
-    const e = await q.one<any>(
-      `select e.id, e.trainee_id, e.programme_id, e.status, p.status as pstatus, p.end_date, c.min_attendance_pct
-         from enrollments e join programmes p on p.id = e.programme_id join courses c on c.id = p.course_id where e.id = $1`, [enrollmentId]);
-    if (!e || !['confirmed', 'completed'].includes(e.status)) return null;
-    await q.query('insert into results (enrollment_id) values ($1) on conflict do nothing', [enrollmentId]);
-    const existing = await q.one<any>('select * from results where enrollment_id = $1 for update', [enrollmentId]);
-    if (existing.finalised) return existing;
-
-    const assessments = await q.query<any>(
-      `select a.pass_mark,
-              (select max(x.percentage) from exam_attempts x where x.assessment_id = a.id and x.trainee_id = $2 and x.status = 'marked') as best,
-              (select count(*) from exam_attempts x where x.assessment_id = a.id and x.trainee_id = $2) as attempts
-         from assessments a where a.programme_id = $1 and a.status in ('published','closed') and a.kind in ('exam','practical')`, [e.programme_id, e.trainee_id]);
-    const att = (await attendanceStats(q, e.programme_id, e.trainee_id))[0];
-    const ended = e.pstatus === 'completed' || e.end_date < new Date().toISOString().slice(0, 10);
-    const decision = decideResult({
-      assessments: assessments.map((a) => ({ pass_mark: a.pass_mark, best: a.best, attempts: a.attempts })),
-      attendancePct: att?.attendance_pct ?? null, minAttendancePct: e.min_attendance_pct, programmeEnded: ended,
-    });
-    return q.one<any>('update results set status = $2, final_score = $3, attendance_pct = $4 where id = $1 returning *', [existing.id, decision.status, decision.score, att?.attendance_pct ?? null]);
-  }
+  private compute(q: Q, enrollmentId: string) { return computeResult(q, enrollmentId); }
 }
 
 @Module({ controllers: [ResultsController] })
