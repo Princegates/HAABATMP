@@ -53,14 +53,16 @@ export class CertificatesService {
     return row;
   }
 
-  async revoke(q: Q, certificateId: string, actor: Actor, reason: string) {
+  /** `notify: false` is for a reissue, which tells the trainee about the replacement instead. Nothing is sent about a certificate the trainee has not been shown yet. */
+  async revoke(q: Q, certificateId: string, actor: Actor, reason: string, opts: { notify?: boolean } = {}) {
     const c = await q.one<any>('select * from certificates where id = $1 for update', [certificateId]);
     if (!c) throw new NotFoundException('Certificate not found');
     if (c.status === 'revoked') throw new ConflictException('This certificate is already revoked');
     const after = await q.one<any>(
       `update certificates set status = 'revoked', revoked_at = now(), revoked_by = $2, revoke_reason = $3 where id = $1 returning *`, [certificateId, actor.id, reason]);
     await this.audit.log(q, actor, 'certificate.revoke', 'certificate', certificateId, { status: c.status }, { status: 'revoked', reason });
-    await this.notify.notify({ userId: c.trainee_id, kind: 'certificate.revoked', subject: `Certificate ${c.number} revoked`,
+    const shown = await q.one<any>('select 1 from results where enrollment_id = $1 and released', [c.enrollment_id]);
+    if (opts.notify !== false && shown) await this.notify.notify({ userId: c.trainee_id, kind: 'certificate.revoked', subject: `Certificate ${c.number} revoked`,
       body: `Your certificate ${c.number} has been revoked. Reason: ${reason}. Contact HAAB if you believe this is a mistake.` }, q);
     return after;
   }

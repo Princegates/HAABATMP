@@ -297,6 +297,8 @@ test('6. certificates: issued, numbered, downloadable, publicly verifiable witho
   const reissued = ok(await api(S.tok_a1).post(`/certificates/${c.id}/reissue`, { reason: 'Name spelling corrected' }));
   assert.notEqual(reissued.number, c.number, 'a reissue gets a new number');
   assert.equal(ok(await http('GET', `/verify/${token}`)).status, 'revoked', 'the old one no longer verifies');
+  const kinds = (await db.query(`select kind from notifications where user_id = $1 and created_at > now() - interval '1 minute' and kind in ('certificate.revoked','certificate.reissued')`, [S.t1])).rows.map((r) => r.kind);
+  assert.ok(!kinds.includes('certificate.revoked'), 'a reissue does not send a scary revoked message'); assert.ok(kinds.includes('certificate.reissued'), 'the trainee is told about the replacement');
   refused(await api(S.tok_T1).post(`/certificates/${reissued.id}/revoke`, { reason: 'I do not want it' }), 403, 'holders cannot revoke');
   ok(await api(S.tok_a1).post(`/certificates/${reissued.id}/revoke`, { reason: 'Issued in error for the test' }));
   const t2 = (await db.query('select verification_token from certificates where id = $1', [reissued.id])).rows[0].verification_token;

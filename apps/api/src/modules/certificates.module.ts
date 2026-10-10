@@ -7,6 +7,7 @@ import { CertificatesService, certStatus } from '../common/certificates.service'
 import { Db } from '../common/db.service';
 import { ActorCtx, CurrentUser, Public, Require } from '../common/decorators';
 import { seesAllClients } from '../common/scope';
+import { NotifyService } from '../common/notify.service';
 import { SettingsService } from '../common/settings.service';
 import { pageQuery, parse, uuid } from '../common/validation';
 
@@ -27,7 +28,7 @@ const templateBody = z.object({
 
 @Controller()
 export class CertificatesController {
-  constructor(private readonly db: Db, private readonly certs: CertificatesService, private readonly audit: AuditService, private readonly settings: SettingsService) {}
+  constructor(private readonly db: Db, private readonly certs: CertificatesService, private readonly audit: AuditService, private readonly settings: SettingsService, private readonly notify: NotifyService) {}
 
   // ------------------------------------------------------------ public verification
 
@@ -121,8 +122,13 @@ export class CertificatesController {
     return this.db.tx(async (q) => {
       const old = await q.one<any>('select enrollment_id from certificates where id = $1', [id]);
       if (!old) throw new NotFoundException();
-      await this.certs.revoke(q, id, actor, `Reissued: ${reason}`);
-      return this.certs.issue(q, old.enrollment_id, actor);
+      await this.certs.revoke(q, id, actor, `Reissued: ${reason}`, { notify: false });
+      const fresh = await this.certs.issue(q, old.enrollment_id, actor);
+      // one message about the replacement, and only once the trainee has been shown their result
+      const shown = await q.one<any>('select 1 from results where enrollment_id = $1 and released', [old.enrollment_id]);
+      if (shown) await this.notify.notify({ userId: fresh.trainee_id, kind: 'certificate.reissued', subject: `Certificate reissued: ${fresh.number}`,
+        body: `Your certificate has been reissued as ${fresh.number}. The previous number no longer verifies. Download the new one from Certificates.` }, q);
+      return fresh;
     });
   }
 
