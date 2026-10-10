@@ -743,3 +743,53 @@ test('22. opening times of a published assessment can be changed; a partial upda
   assert.equal(cleared.opens_at, null); assert.equal(cleared.closes_at, null);
   refused(await a1.patch(`/assessments/${x.id}`, { opens_at: closes, closes_at: opens }), 400, 'closing must be after opening');
 });
+
+test('23. instructors can register trainees from an Excel list, on programmes they teach', async () => {
+  const { default: ExcelJS } = await import('exceljs');
+  const sheet = async (rows) => {
+    const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('Trainees');
+    ws.addRow(['Full name', 'Email', 'Phone', 'Job role', 'Employer']); rows.forEach((r) => ws.addRow(r));
+    return Buffer.from(await wb.xlsx.writeBuffer());
+  };
+  const upload = (token, buf, fields, name = 'list.xlsx') => { const fd = new FormData(); for (const [k, v] of Object.entries(fields)) fd.append(k, v); fd.append('file', new Blob([buf]), name); return http('POST', '/trainees/import-file', token, fd); };
+  const a1 = api(S.tok_a1); const instr = api(S.tok_instr);
+  const mine = ok(await a1.post('/programmes', { course_id: S.course.id, start_date: day(10), end_date: day(12), lead_instructor_id: S.instr, capacity: 20, fee: 0 }));
+  const notMine = ok(await a1.post('/programmes', { course_id: S.course.id, start_date: day(10), end_date: day(12), capacity: 20, fee: 0 }));
+  for (const p of [mine, notMine]) ok(await a1.post(`/programmes/${p.id}/status`, { status: 'open_for_registration' }));
+  // what the screen offers
+  const opts = ok(await instr.get('/trainees/register-options'));
+  assert.ok(opts.programmes.some((p) => p.id === mine.id), 'their own programme is offered');
+  assert.ok(!opts.programmes.some((p) => p.id === notMine.id), 'a programme they do not teach is not');
+  assert.ok(opts.organizations.length >= 1);
+  refused(await api(S.tok_T1).get('/trainees/register-options'), 403, 'trainees cannot');
+  refused(await api(S.tok_fin).get('/trainees/register-options'), 403, 'nor finance');
+
+  const tag = `xl${run}`;
+  const list = await sheet([[`Ama ${tag}`, `ama.${tag}@example.com`, '+233 20 000', 'Ramp agent', 'Example Co'], [`Kofi ${tag}`, `kofi.${tag}@example.com`], ['No Email', 'not-an-email'], [`Ama ${tag} again`, `AMA.${tag}@example.com`]]);
+  const prev = ok(await upload(S.tok_instr, list, { organization_id: S.orgA, programme_id: mine.id }));
+  assert.equal(prev.total, 4); assert.equal(prev.new, 2); assert.equal(prev.skipped, 2); assert.equal(prev.can_import, true);
+  assert.ok(prev.rows[2].notes[0].includes('not a valid email')); assert.ok(prev.rows[3].notes[0].includes('twice'));
+  assert.equal(ok(await a1.get(`/users?q=${tag}&limit=10`)).data.length, 0, 'a preview creates no one');
+  refused(await upload(S.tok_instr, list, { organization_id: S.orgA, programme_id: notMine.id }), 403, 'only programmes they teach');
+  refused(await upload(S.tok_T1, list, { organization_id: S.orgA }), 403, 'trainees cannot import');
+  refused(await upload(S.tok_instr, list, { organization_id: S.orgA }, 'old.xls'), 400, 'only xlsx and csv');
+  refused(await upload(S.tok_instr, Buffer.from('nope'), { organization_id: S.orgA }), 400, 'not a real workbook');
+
+  const done = ok(await upload(S.tok_instr, list, { organization_id: S.orgA, programme_id: mine.id, commit: 'true' }));
+  assert.equal(done.created, 2); assert.equal(done.trainee_ids.length, 2);
+  const people = ok(await a1.get(`/users?q=${tag}&limit=10`)).data;
+  assert.equal(people.length, 2); assert.ok(people.every((p) => p.role === 'trainee' && p.organization_id === S.orgA));
+  // the second step: register them on the programme
+  const enrolled = ok(await instr.post(`/programmes/${mine.id}/enrol`, { trainee_ids: done.trainee_ids }));
+  assert.equal(enrolled.enrolled.length, 2); assert.equal(enrolled.failed.length, 0);
+  const refusedEnrol = ok(await instr.post(`/programmes/${notMine.id}/enrol`, { trainee_ids: done.trainee_ids }));
+  assert.equal(refusedEnrol.enrolled.length, 0, 'they cannot register people on a programme they do not teach');
+  assert.equal(refusedEnrol.failed.length, 2);
+  // the same list again: nobody is duplicated, the existing accounts are recognised
+  const again = ok(await upload(S.tok_instr, list, { organization_id: S.orgA, commit: 'true' }));
+  assert.equal(again.created, 0); assert.equal(again.existing, 2);
+  assert.equal(ok(await a1.get(`/users?q=${tag}&limit=10`)).data.length, 2);
+  // CSV works too
+  const csv = Buffer.from(`Full name,Email\nCsv Person ${tag},csv.${tag}@example.com\n`);
+  assert.equal(ok(await upload(S.tok_instr, csv, { organization_id: S.orgA, commit: 'true' }, 'list.csv')).created, 1);
+});

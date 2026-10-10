@@ -1,7 +1,10 @@
 import {
   BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Inject, Module, NotFoundException,
-  Param, Patch, Post, Put, Query,
+  Param, Patch, Post, Put, Query, UploadedFile, UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { readTraineeSheet } from '../common/trainee-sheet';
 import { z } from 'zod';
 import { ENV, Env } from '../config';
 import { Actor, AuthUser } from '../common/auth.types';
@@ -272,6 +275,95 @@ export class UsersController {
       await this.audit.log(q, actor, 'registration.reject', 'registration_request', id, { status: 'pending' }, { status: 'rejected', reason });
       return { ok: true };
     });
+  }
+
+  // ---------------------------------------------------------------- register trainees from an Excel list
+
+  /** What the "Register trainees" screen offers: clients to attach people to, and the programmes this person may register them on. */
+  @Get('trainees/register-options')
+  @Require('trainees:register')
+  async registerOptions(@CurrentUser() u: AuthUser) {
+    const organizations = await this.db.query(`select id, name from organizations where status = 'active' order by name`);
+    const open = `p.status in ('open_for_registration','registration_closed','ongoing')`;
+    const programmes = isStaff(u)
+      ? await this.db.query(`select p.id, p.code, p.title, p.start_date, p.end_date, p.organization_id from programmes p where ${open} order by p.start_date`)
+      : await this.db.query(
+          `select p.id, p.code, p.title, p.start_date, p.end_date, p.organization_id from programmes p
+            where ${open} and (p.lead_instructor_id = $1 or exists (select 1 from sessions s where s.programme_id = p.id and s.instructor_id = $1)) order by p.start_date`, [u.id]);
+    return { organizations, programmes };
+  }
+
+  /**
+   * An Excel or CSV list of trainees. Without commit=true it only reads the file and says what would happen.
+   * New people get an account and an invitation. People who already have a trainee account are not duplicated; their
+   * ids come back too, so the screen can register everyone on a programme in the next step.
+   */
+  @Post('trainees/import-file')
+  @Require('trainees:register')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
+  async importTraineeFile(@CurrentUser() u: AuthUser, @UploadedFile() file: { buffer: Buffer; originalname: string } | undefined, @Body() body: unknown, @ActorCtx() actor: Actor) {
+    const d = parse(z.object({ organization_id: z.union([uuid, z.literal('')]).optional(), programme_id: z.union([uuid, z.literal('')]).optional(), commit: z.enum(['true', 'false']).default('false') }), body);
+    const orgId = d.organization_id || null;
+    const programmeId = d.programme_id || null;
+    if (!file) throw new BadRequestException('Choose an Excel file (.xlsx) to upload');
+    if (!/\.(xlsx|csv)$/i.test(file.originalname)) throw new BadRequestException('Only Excel .xlsx or CSV files are accepted. In Excel choose File > Save As > Excel Workbook (.xlsx).');
+    if (orgId) await this.assertOrgExists(orgId);
+    if (programmeId) {
+      const p = await this.db.one<any>(`select id, status, lead_instructor_id from programmes where id = $1`, [programmeId]);
+      if (!p) throw new BadRequestException('Unknown programme');
+      if (!isStaff(u)) {
+        const mine = p.lead_instructor_id === u.id || (await this.db.one('select 1 from sessions where programme_id = $1 and instructor_id = $2 limit 1', [programmeId, u.id]));
+        if (!mine) throw new ForbiddenException('You can only register trainees on programmes you teach');
+      }
+    }
+    let rows;
+    try { rows = await readTraineeSheet(file.buffer, file.originalname); } catch (e: any) { throw new BadRequestException(e.message); }
+
+    const found = await this.db.query<{ id: string; email: string; role: string; organization_id: string | null; status: string }>(
+      `select id, lower(email) as email, role, organization_id, status from users where lower(email) = any($1::text[])`, [rows.map((r) => r.email).filter(Boolean)]);
+    const byEmail = new Map(found.map((f) => [f.email, f]));
+    const seen = new Set<string>();
+    const items = rows.map((r) => {
+      let status: 'new' | 'existing' | 'invalid' | 'duplicate' = 'new';
+      const notes: string[] = [...r.problems];
+      let existingId: string | null = null;
+      if (r.problems.length) status = 'invalid';
+      else if (seen.has(r.email)) { status = 'duplicate'; notes.push('This email appears twice in the file'); }
+      else {
+        const ex = byEmail.get(r.email);
+        if (ex) {
+          if (ex.role !== 'trainee') { status = 'invalid'; notes.push('This email belongs to someone who is not a trainee'); }
+          else if (ex.status === 'suspended') { status = 'invalid'; notes.push('This trainee account is suspended'); }
+          else { status = 'existing'; existingId = ex.id; notes.push(ex.organization_id === orgId ? 'Already has an account' : 'Already has an account, kept as it is'); }
+        }
+      }
+      if (r.email) seen.add(r.email);
+      return { ...r, status, notes, existing_id: existingId };
+    });
+    const summary = {
+      total: items.length, new: items.filter((i) => i.status === 'new').length, existing: items.filter((i) => i.status === 'existing').length,
+      skipped: items.filter((i) => i.status === 'invalid' || i.status === 'duplicate').length,
+    };
+    if (d.commit !== 'true') return { ...summary, rows: items, can_import: summary.new + summary.existing > 0 };
+
+    const created: { id: string; email: string }[] = [];
+    const failed: { email: string; reason: string }[] = [];
+    for (const i of items.filter((x) => x.status === 'new')) {
+      try {
+        await this.db.tx(async (q) => {
+          if (await q.one('select 1 from users where lower(email) = $1', [i.email])) throw new ConflictException('exists');
+          const user = await this.insertUser(q, { email: i.email, full_name: i.full_name, phone: i.phone, role: 'trainee', organization_id: orgId, created_by: u.id });
+          await this.writeProfile(q, user.id, 'trainee', { employer: i.employer, aviation_role: i.aviation_role });
+          created.push({ id: user.id, email: user.email });
+        });
+      } catch (e: any) {
+        failed.push({ email: i.email, reason: e instanceof ConflictException ? 'an account with this email already exists' : (e.response?.message ?? e.message ?? 'failed') });
+      }
+    }
+    const trainee_ids = [...created.map((c) => c.id), ...items.filter((x) => x.status === 'existing').map((x) => x.existing_id!)];
+    await this.audit.log(null, actor, 'trainee.import_file', 'user', null, null, { file: file.originalname.slice(0, 120), organization_id: orgId, programme_id: programmeId, created: created.length, existing: summary.existing, skipped: summary.skipped, failed: failed.length });
+    return { ...summary, created: created.length, failed, trainee_ids };
   }
 
   @Post('users/import')

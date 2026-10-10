@@ -63,7 +63,7 @@ export class EnrollmentsController {
 
   /** Registers several trainees at once. Each succeeds or fails on its own; the response says which. */
   @Post('programmes/:id/enrol')
-  @Require('enrollments:write')
+  @Require('enrollments:write', 'trainees:register')
   async enrolMany(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
     parse(uuid, id);
     const { trainee_ids } = parse(z.object({ trainee_ids: z.array(uuid).min(1).max(200) }), body);
@@ -146,9 +146,13 @@ export class EnrollmentsController {
     if (!t || t.role !== 'trainee') throw new BadRequestException('That person is not a trainee');
     if (t.status === 'suspended') throw new BadRequestException(`${t.full_name} is suspended`);
 
-    const staff = isStaff(u);
+    // an instructor may register people, but only on a programme they teach
+    if (u.role === 'instructor' && p.lead_instructor_id !== u.id && !(await q.one('select 1 from sessions where programme_id = $1 and instructor_id = $2 limit 1', [programmeId, u.id]))) {
+      throw new ForbiddenException('You can only register trainees on programmes you teach');
+    }
+    const staff = isStaff(u) || u.role === 'instructor';
     if (u.role === 'org_admin' && t.organization_id !== u.organizationId) throw new NotFoundException('Trainee not found');
-    if (p.organization_id && t.organization_id !== p.organization_id && !staff) throw new ForbiddenException('This programme is reserved for another organisation');
+    if (p.organization_id && t.organization_id !== p.organization_id && !isStaff(u)) throw new ForbiddenException('This programme is reserved for another organisation');
     if (staff ? !['open_for_registration', 'registration_closed', 'ongoing'].includes(p.status) : p.status !== 'open_for_registration') {
       throw new ConflictException('Registration is not open for this programme');
     }

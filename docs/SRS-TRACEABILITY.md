@@ -72,3 +72,5 @@ Phase 1 is complete apart from the items marked Partly above. The corporate (cli
 4. Changing your own password while signed in, day/month calendar views, editable email templates, option shuffling, signature images, SCORM, SMS, WhatsApp, online payments and AI features are not built.
 
 **Question import.** Staff can add questions in bulk from a Word (.docx) file written to a simple template (Assessments > Question bank > Import from Word). The platform shows a preview, skips questions already in the bank, and refuses the whole file if any question has a problem.
+
+**Registering trainees from Excel.** Instructors (and staff) can upload an Excel or CSV list under Register trainees. The platform previews it, creates accounts with invitations, recognises people who already have an account, and can register everyone on a programme. Instructors can only register people on programmes they teach, and registrations stay pending until HAAB staff confirm them.
