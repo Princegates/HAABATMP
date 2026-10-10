@@ -13,9 +13,9 @@ function Inner() {
   ];
   return (
     <>
-      <PageHead title="Marking" accent="queue" subtitle="Submitted attempts with answers that need a person. Objective questions have already been marked automatically." />
+      <PageHead title="Marking" accent="queue" subtitle="Every submitted attempt. Objective questions are marked automatically; written answers need a person. Open an attempt to read the answers." />
       <DataList path="/attempts" columns={columns} search={false} extra={{ assessment_id: params.get('assessment_id') ?? undefined }}
-        filters={[{ name: 'status', label: 'Show', options: [{ value: 'submitted', label: 'Waiting to be marked' }, { value: 'marked', label: 'Marked' }] }]} empty={{ title: 'Nothing waiting to be marked' }} />
+        filters={[{ name: 'status', label: 'Show', options: [{ value: 'submitted', label: 'Waiting to be marked' }, { value: 'marked', label: 'Marked' }] }]} empty={{ title: 'No attempts to show', hint: 'Attempts appear here once a trainee has submitted. Use the filter to see only those waiting or already marked.' }} />
     </>
   );
 }

@@ -433,9 +433,11 @@ export class AssessmentsController {
   @Get('attempts')
   @Require('attempts:mark')
   async queue(@CurrentUser() u: AuthUser, @Query() query: unknown) {
-    const f = parse(pageQuery.extend({ assessment_id: uuid.optional(), programme_id: uuid.optional(), status: z.enum(['in_progress', 'submitted', 'marked']).default('submitted') }), query);
-    const params: any[] = [f.status];
-    const where = ['x.status = $1'];
+    const f = parse(pageQuery.extend({ assessment_id: uuid.optional(), programme_id: uuid.optional(), status: z.enum(['in_progress', 'submitted', 'marked']).optional() }), query);
+    // no filter means every attempt that has been handed in, waiting or already marked
+    const params: any[] = [];
+    const where: string[] = [];
+    if (f.status) { params.push(f.status); where.push('x.status = $1'); } else where.push(`x.status in ('submitted','marked')`);
     const add = (sql: string, v: any) => { params.push(v); where.push(sql.replace(/\?/g, `$${params.length}`)); };
     if (u.role === 'instructor') add(this.instructorScope('a'), u.id);
     if (f.assessment_id) add('x.assessment_id = ?', f.assessment_id);
