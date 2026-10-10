@@ -872,3 +872,37 @@ test('25. completing a programme settles its results even when its session dates
   assert.equal(fin.finalised, 1);
   ok(await api(S.sa).post(`/programmes/${prog.id}/results/release`));
 });
+
+test('26. only a Super Admin can let an instructor finalise results, and only on their own programmes', async () => {
+  const a1 = api(S.tok_a1); const sa = api(S.sa); const instr = api(S.tok_instr);
+  const prog = ok(await a1.post('/programmes', { course_id: S.course.id, start_date: day(50), end_date: day(51), lead_instructor_id: S.instr, capacity: 5, fee: 0 }));
+  const other = ok(await a1.post('/programmes', { course_id: S.course.id, start_date: day(50), end_date: day(51), capacity: 5, fee: 0 }));
+  ok(await a1.post(`/programmes/${prog.id}/status`, { status: 'open_for_registration' }));
+  const enrol = ok(await a1.post(`/programmes/${prog.id}/enrol`, { trainee_ids: [S.t1] }));
+  ok(await a1.post(`/enrollments/${enrol.enrolled[0].id}/confirm`, {}));
+  const q = ok(await a1.post('/questions', { course_id: S.course.id, type: 'true_false', prompt: `Instructor finalise ${run}: water is wet.`, answer: true, marks: 1 }));
+  const asm = ok(await a1.post('/assessments', { course_id: S.course.id, programme_id: prog.id, title: `IF ${run}`, duration_minutes: 10, pass_mark: 50, max_attempts: 1 }));
+  ok(await a1.put(`/assessments/${asm.id}/questions`, { items: [{ question_id: q.id }] }));
+  ok(await a1.post(`/assessments/${asm.id}/publish`));
+  const st = ok(await api(S.tok_T1).post(`/assessments/${asm.id}/start`));
+  ok(await api(S.tok_T1).put(`/attempts/${st.attempt.id}/answers`, { answers: { [q.id]: true } }));
+  ok(await api(S.tok_T1).post(`/attempts/${st.attempt.id}/submit`));
+  for (const s of ['registration_closed', 'ongoing', 'completed']) ok(await a1.post(`/programmes/${prog.id}/status`, { status: s }));
+
+  // by default an instructor cannot
+  refused(await instr.post(`/programmes/${prog.id}/results/finalise-all`), 403, 'instructors cannot finalise by default');
+  // a training admin cannot grant the right; the Super Admin can
+  refused(await a1.patch(`/users/${S.instr}`, { can_finalise_results: true }), 403, 'training admins cannot grant it');
+  assert.equal(ok(await sa.patch(`/users/${S.instr}`, { can_finalise_results: true })).can_finalise_results, true);
+  assert.ok(ok(await instr.get('/auth/me')).permissions.includes('results:finalise'), 'the screen learns of the right');
+  // only on programmes they lead or teach
+  refused(await instr.post(`/programmes/${other.id}/results/finalise-all`), 404, 'not their programme');
+  const done = ok(await instr.post(`/programmes/${prog.id}/results/finalise-all`));
+  assert.equal(done.finalised, 1);
+  assert.equal(ok(await instr.post(`/programmes/${prog.id}/results/release`)).released, 1);
+  // taken away again
+  assert.equal(ok(await sa.patch(`/users/${S.instr}`, { can_finalise_results: false })).can_finalise_results, false);
+  refused(await instr.post(`/programmes/${prog.id}/results/release`), 403, 'right withdrawn');
+  // the right means nothing for other roles
+  assert.equal(ok(await sa.patch(`/users/${S.fin}`, { can_finalise_results: true })).can_finalise_results, false, 'only instructors can hold it');
+});

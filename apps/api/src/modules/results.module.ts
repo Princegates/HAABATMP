@@ -83,6 +83,9 @@ export class ResultsController {
   async finalise(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
     parse(uuid, id);
     const { remarks } = parse(z.object({ remarks: z.string().trim().max(1000).optional() }), body ?? {});
+    const prog = await this.db.one<{ programme_id: string }>('select e.programme_id from results r join enrollments e on e.id = r.enrollment_id where r.id = $1', [id]);
+    if (!prog) throw new NotFoundException();
+    await this.assertProgrammeAccess(u, prog.programme_id); // an instructor with the right can only act on programmes they lead or teach
     return this.db.tx((q) => this.finaliseOne(q, u, actor, id, remarks));
   }
 
@@ -90,6 +93,7 @@ export class ResultsController {
   @Require('results:finalise')
   async finaliseAll(@CurrentUser() u: AuthUser, @Param('id') id: string, @ActorCtx() actor: Actor) {
     parse(uuid, id);
+    await this.assertProgrammeAccess(u, id);
     const rows = await this.db.query<{ id: string }>(
       `select r.id from results r join enrollments e on e.id = r.enrollment_id where e.programme_id = $1 and not r.finalised and r.status <> 'pending'`, [id]);
     let finalised = 0;
@@ -135,8 +139,9 @@ export class ResultsController {
   /** Makes finalised results visible to trainees and their client administrators, and tells the trainees. */
   @Post('programmes/:id/results/release')
   @Require('results:finalise')
-  async release(@Param('id') id: string, @ActorCtx() actor: Actor) {
+  async release(@CurrentUser() u: AuthUser, @Param('id') id: string, @ActorCtx() actor: Actor) {
     parse(uuid, id);
+    await this.assertProgrammeAccess(u, id);
     return this.db.tx(async (q) => {
       const rows = await q.query<any>(
         `update results r set released = true from enrollments e join programmes p on p.id = e.programme_id

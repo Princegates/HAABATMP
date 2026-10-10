@@ -29,10 +29,11 @@ export default function UsersPage() {
     { name: 'full_name', label: 'Full name', required: true }, { name: 'email', label: 'Email', type: 'email', required: true, disabled: !isNew },
     { name: 'phone', label: 'Phone' }, { name: 'role', label: 'Role', type: 'select', required: true, options: roleOpts, disabled: !isNew && me.role !== 'super_admin' },
     { name: 'organization_id', label: 'Client organisation', type: 'select', options: orgs, help: 'Required for client administrators', hidden: (v) => !['org_admin', 'trainee'].includes(v.role) },
+    { name: 'can_finalise_results', label: 'May finalise and release results', type: 'checkbox', full: true, help: 'Lets this instructor make results official and release them, only on programmes they lead or teach. Whoever marked someone\'s work still cannot finalise it while that control is on in Training Rules.', hidden: (v) => isNew || me.role !== 'super_admin' || v.role !== 'instructor' },
   ];
   const columns: Column<any>[] = [
     { key: 'full_name', label: 'Name', render: (u) => <b style={{ fontWeight: 600 }}>{u.full_name}</b>, href: (u) => ['trainee', 'instructor'].includes(u.role) ? `/people/${u.id}` : undefined },
-    { key: 'email', label: 'Email' }, { key: 'role', label: 'Role', render: (u) => ROLE_LABEL[u.role as Role] }, { key: 'organization_name', label: 'Belongs to', render: (u) => (u.organization_name ? u.organization_name : ['trainee', 'org_admin'].includes(u.role) ? <span className="muted">Individual</span> : <Badge tone="info">HAAB staff</Badge>) },
+    { key: 'email', label: 'Email' }, { key: 'role', label: 'Role', render: (u) => <>{ROLE_LABEL[u.role as Role]}{u.can_finalise_results && <div className="muted" style={{ fontSize: 12 }}>May finalise results</div>}</> }, { key: 'organization_name', label: 'Belongs to', render: (u) => (u.organization_name ? u.organization_name : ['trainee', 'org_admin'].includes(u.role) ? <span className="muted">Individual</span> : <Badge tone="info">HAAB staff</Badge>) },
     { key: 'status', label: 'Status', render: (u) => <Badge value={u.status} /> }, { key: 'last_login_at', label: 'Last sign-in', render: (u) => (u.last_login_at ? date(u.last_login_at) : 'Never') },
   ];
   return (
@@ -53,7 +54,7 @@ export default function UsersPage() {
           </span>
         )} />
       {form && <FormModal title={form === 'new' ? 'New user' : `Edit ${form.full_name}`} fields={fields(form === 'new')} initial={form === 'new' ? {} : form} onClose={() => setForm(null)}
-        onSubmit={async (v) => { form === 'new' ? await api.post('/users', v) : await api.patch(`/users/${form.id}`, { full_name: v.full_name, phone: v.phone, organization_id: v.organization_id, ...(me.role === 'super_admin' ? { role: v.role } : {}) }); toast(form === 'new' ? 'User created. They will receive an invitation.' : 'Saved'); setTick((t) => t + 1); }} />}
+        onSubmit={async (v) => { form === 'new' ? await api.post('/users', v) : await api.patch(`/users/${form.id}`, { full_name: v.full_name, phone: v.phone, organization_id: v.organization_id, ...(me.role === 'super_admin' ? { role: v.role, ...(v.role === 'instructor' ? { can_finalise_results: !!v.can_finalise_results } : {}) } : {}) }); toast(form === 'new' ? 'User created. They will receive an invitation.' : 'Saved'); setTick((t) => t + 1); }} />}
       {suspend && <ConfirmModal title={`Suspend ${suspend.full_name}?`} message="They are signed out of every device straight away and cannot sign in until reactivated." askReason="Reason" danger confirmLabel="Suspend"
         onClose={() => setSuspend(null)} onConfirm={async (reason) => { await api.post(`/users/${suspend.id}/suspend`, { reason }); toast('Account suspended'); setTick((t) => t + 1); }} />}
     </Card>

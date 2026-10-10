@@ -67,7 +67,7 @@ const importBody = z.object({
 
 /** Only these roles belong to a client organisation. Everyone else is HAAB staff. */
 const CLIENT_ROLES: Role[] = ['trainee', 'org_admin'];
-const PUBLIC_COLS = `u.id, u.email, u.full_name, u.phone, u.role, u.organization_id, u.status, u.last_login_at, u.created_at, o.name as organization_name`;
+const PUBLIC_COLS = `u.id, u.email, u.full_name, u.phone, u.role, u.organization_id, u.status, u.last_login_at, u.created_at, u.can_finalise_results, o.name as organization_name`;
 
 @Controller()
 export class UsersController {
@@ -410,7 +410,9 @@ export class UsersController {
       phone: z.string().trim().max(50).nullable(),
       organization_id: uuid.nullable(),
       role: z.enum(ROLES),
+      can_finalise_results: z.boolean(),
     }).partial(), body);
+    if (d.can_finalise_results !== undefined && u.role !== 'super_admin') throw new ForbiddenException('Only a super administrator can give or take away the right to finalise results');
     const target = await this.load(u, id);
     this.assertManageable(u, target);
     if (d.role && d.role !== target.role) {
@@ -425,9 +427,10 @@ export class UsersController {
     return this.db.tx(async (q) => {
       const after = await q.one(
         `update users set full_name = coalesce($2, full_name), phone = case when $3 then $4 else phone end,
-                organization_id = case when $5 then $6 else organization_id end, role = coalesce($7, role)
-          where id = $1 returning id, email, full_name, phone, role, organization_id, status`,
-        [id, d.full_name ?? null, 'phone' in d, d.phone ?? null, staffNow || 'organization_id' in d, staffNow ? null : d.organization_id ?? null, d.role ?? null]);
+                organization_id = case when $5 then $6 else organization_id end, role = coalesce($7, role),
+                can_finalise_results = case when $8::boolean is null then can_finalise_results when $9 <> 'instructor' then false else $8 end
+          where id = $1 returning id, email, full_name, phone, role, organization_id, status, can_finalise_results`,
+        [id, d.full_name ?? null, 'phone' in d, d.phone ?? null, staffNow || 'organization_id' in d, staffNow ? null : d.organization_id ?? null, d.role ?? null, d.can_finalise_results ?? null, newRole]);
       await this.audit.log(q, actor, 'user.update', 'user', id, pickUser(target), after);
       return after;
     });

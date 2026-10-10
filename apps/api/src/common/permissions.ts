@@ -92,3 +92,10 @@ export const CAN_CREATE_ROLES: Record<Role, readonly Role[]> = {
 };
 
 export const STAFF_ROLES: readonly Role[] = ['super_admin', 'training_admin'];
+
+/** What a person may do: their role's permissions, plus the one right a Super Administrator can grant an individual instructor. */
+export function permissionsFor(u: { role: Role; can_finalise_results?: boolean | null }): ReadonlySet<Permission> {
+  const base = PERMISSIONS[u.role];
+  if (u.role === 'instructor' && u.can_finalise_results) return new Set<Permission>([...base, 'results:finalise']);
+  return base;
+}

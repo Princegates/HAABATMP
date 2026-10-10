@@ -8,7 +8,7 @@ import { AuditService } from '../common/audit.service';
 import { Db } from '../common/db.service';
 import { SettingsService } from '../common/settings.service';
 import { ActorCtx, AllowWithoutMfa, CurrentUser, Public } from '../common/decorators';
-import { PERMISSIONS } from '../common/permissions';
+import { permissionsFor } from '../common/permissions';
 import { TokenService } from '../common/token.service';
 import { parse } from '../common/validation';
 import { timingSafeEqual } from 'node:crypto';
@@ -146,7 +146,7 @@ export class AuthController {
     return {
       id: user.id, email: user.email, full_name: user.fullName, role: user.role,
       organization: org,
-      permissions: [...PERMISSIONS[user.role]],
+      permissions: [...permissionsFor({ role: user.role, can_finalise_results: user.canFinalise })],
       mfa_required: user.mfaEnrolled || (await this.settings.mfaRoles()).has(user.role),
       mfa_required_by_policy: (await this.settings.mfaRoles()).has(user.role),
       mfa_enrolled: user.mfaEnrolled,

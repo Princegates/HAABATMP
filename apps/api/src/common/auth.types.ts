@@ -7,6 +7,7 @@ export interface AuthUser {
   role: Role;
   organizationId: string | null;
   mfaEnrolled: boolean; // the person has turned two-step sign-in on
+  canFinalise?: boolean; // an instructor whom a Super Administrator has allowed to finalise results
   mfa: boolean; // true when the session was established with a second factor (aal2)
 }
 
