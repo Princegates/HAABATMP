@@ -199,7 +199,10 @@ export class FinanceController {
   private async assertTraineeMayUseFinance(u: AuthUser) {
     if (u.role !== 'trainee') return;
     const s = await this.settings.get<{ show_finance: boolean }>('trainee_access');
-    if (!s.show_finance) throw new ForbiddenException('Invoices are not available to trainees');
+    if (s.show_finance) return;
+    // once the platform is open to the public, an individual (no organisation) pays for themselves and must see their invoices
+    if (!u.organizationId && (await this.settings.get<{ enabled: boolean }>('public_access')).enabled) return;
+    throw new ForbiddenException('Invoices are not available to trainees');
   }
 
   private async visible(u: AuthUser, id: string) {

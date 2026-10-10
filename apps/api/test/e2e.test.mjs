@@ -906,3 +906,38 @@ test('26. only a Super Admin can let an instructor finalise results, and only on
   // the right means nothing for other roles
   assert.equal(ok(await sa.patch(`/users/${S.fin}`, { can_finalise_results: true })).can_finalise_results, false, 'only instructors can hold it');
 });
+
+test('27. Public Access: organisations pay for now, and the Super Admin can open the platform to the general public', async () => {
+  const sa = api(S.sa); const a1 = api(S.tok_a1);
+  const solo = ok(await sa.post('/users', { email: email('public.solo'), full_name: `Solo ${run}`, role: 'trainee' }));
+  const tok = await login(email('public.solo')); const me = api(tok);
+  const prog = ok(await a1.post('/programmes', { course_id: S.course.id, start_date: day(60), end_date: day(61), capacity: 5, fee: 100 }));
+  ok(await a1.post(`/programmes/${prog.id}/status`, { status: 'open_for_registration' }));
+  // off by default: the sign-in page offers nothing, and a person without an organisation cannot register themselves
+  assert.equal(ok(await sa.get('/settings/pages/public_access')).values.enabled, false);
+  refused(await me.post('/enrollments', { programme_id: prog.id }), 403, 'individuals cannot register themselves yet');
+  // staff can still register them
+  ok(await a1.post(`/programmes/${prog.id}/enrol`, { trainee_ids: [solo.id] }));
+  // Finance stays hidden from an individual while trainee finance is off and the platform is not public
+  ok(await sa.put('/settings/pages/trainee_access', { show_finance: false }));
+  refused(await me.get('/invoices'), 403, 'no finance for individuals yet');
+  assert.equal(ok(await me.get('/auth/me')).show_finance, false);
+  assert.equal(ok(await http('GET', '/registration/status')).enabled, false);
+  // only the Super Admin can switch it on
+  refused(await a1.put('/settings/pages/public_access', { enabled: true }), 403, 'training admins cannot open the platform');
+  ok(await sa.put('/settings/pages/public_access', { enabled: true }));
+  assert.equal(ok(await http('GET', '/registration/status')).enabled, true, 'sign-ups are offered');
+  const prog2 = ok(await a1.post('/programmes', { course_id: S.course.id, start_date: day(62), end_date: day(63), capacity: 5, fee: 100 }));
+  ok(await a1.post(`/programmes/${prog2.id}/status`, { status: 'open_for_registration' }));
+  const reg = ok(await me.post('/enrollments', { programme_id: prog2.id }));
+  assert.equal(reg.status, 'pending'); assert.equal(reg.sponsor_organization_id, null);
+  assert.equal(ok(await me.get('/auth/me')).show_finance, true, 'an individual sees Finance');
+  const inv = ok(await me.get('/invoices')).data;
+  assert.ok(inv.some((i) => i.programme_id === prog2.id && i.trainee_id === solo.id), 'invoiced personally');
+  // a trainee who belongs to an organisation still follows the Trainee Access setting
+  refused(await api(S.tok_T1).get('/invoices'), 403, 'organisation trainees still follow Trainee Access');
+  // back to normal
+  ok(await sa.put('/settings/pages/public_access', { enabled: false }));
+  refused(await me.get('/invoices'), 403);
+  ok(await sa.put('/settings/pages/trainee_access', { show_finance: true }));
+});

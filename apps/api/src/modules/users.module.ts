@@ -196,7 +196,8 @@ export class UsersController {
   @Get('registration/status')
   async registrationStatus() {
     const s = await this.settings.get<{ enabled: boolean; notice: string }>('registration');
-    return { enabled: s.enabled, notice: s.enabled ? s.notice : '' };
+    const open = s.enabled || (await this.settings.get<{ enabled: boolean }>('public_access')).enabled;
+    return { enabled: open, notice: open ? s.notice : '' };
   }
 
   /** Public. Always answers the same way, so it cannot be used to find out who already has an account. */
@@ -205,7 +206,7 @@ export class UsersController {
   @Post('registration')
   async requestAccount(@Body() body: unknown, @ActorCtx() actor: Actor) {
     const s = await this.settings.get<{ enabled: boolean }>('registration');
-    if (!s.enabled) throw new NotFoundException();
+    if (!s.enabled && !(await this.settings.get<{ enabled: boolean }>('public_access')).enabled) throw new NotFoundException();
     const d = parse(z.object({
       email: z.string().trim().email().max(200), full_name: z.string().trim().min(2).max(200),
       phone: z.string().trim().max(50).optional(), organisation: z.string().trim().max(200).optional(),

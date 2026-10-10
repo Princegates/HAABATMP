@@ -145,6 +145,11 @@ export class EnrollmentsController {
     const t = await q.one<any>('select id, full_name, role, status, organization_id from users where id = $1', [traineeId]);
     if (!t || t.role !== 'trainee') throw new BadRequestException('That person is not a trainee');
     if (t.status === 'suspended') throw new BadRequestException(`${t.full_name} is suspended`);
+    // While places are paid for by organisations, a person with no organisation cannot register themselves.
+    // HAAB staff, instructors and client administrators can still register them. A Super Administrator opens this up under Public Access.
+    if (u.role === 'trainee' && !t.organization_id && !(await this.settings.get<{ enabled: boolean }>('public_access')).enabled) {
+      throw new ForbiddenException('Registration is through your organisation or HAAB for now. Please ask them to register you.');
+    }
 
     // an instructor may register people, but only on a programme they teach
     if (u.role === 'instructor' && p.lead_instructor_id !== u.id && !(await q.one('select 1 from sessions where programme_id = $1 and instructor_id = $2 limit 1', [programmeId, u.id]))) {

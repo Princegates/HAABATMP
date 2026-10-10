@@ -62,6 +62,14 @@ export const SETTINGS_PAGES: PageDef[] = [
     ],
   },
   {
+    key: 'public_access', title: 'Public Access', status: 'active', writeRoles: SUPER,
+    description: 'For now every place is paid for by an organisation. Turn this on when HAAB opens training to the general public: individuals can then sign up, register themselves and pay for their own places.',
+    schema: z.object({ enabled: z.boolean() }),
+    defaults: { enabled: false },
+    fields: [{ name: 'enabled', label: 'Open the platform to the general public', type: 'boolean',
+      help: 'Off: people without an organisation cannot register themselves for programmes, and money is only ever owed by organisations. On: the sign-in page offers account requests to anyone (HAAB still approves each one), individuals can register themselves, are invoiced personally and see Finance. Turn on Payment before confirmation under Currency so individuals pay before a place is held.' }],
+  },
+  {
     key: 'trainee_access', title: 'Trainee Access', status: 'active', writeRoles: SUPER,
     description: 'What trainees can see when they sign in.',
     schema: z.object({ show_finance: z.boolean() }),
