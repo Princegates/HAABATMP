@@ -37,10 +37,10 @@ export default function AssessmentPage({ params }: { params: Promise<{ id: strin
       </div>
       <Card title={`Questions (${x.questions.length})`} flush>
         {x.questions.length === 0 ? <div className="empty muted">No questions yet. Add some from the bank, or pick at random.</div> : (
-          <table className="table"><thead><tr><th>#</th><th>Question</th><th>Type</th><th>Level</th><th className="num">Marks</th></tr></thead><tbody>{x.questions.map((q: any, i: number) => <tr key={q.id}><td>{i + 1}</td><td>{q.prompt}</td><td>{label(q.type)}</td><td>{q.difficulty}</td><td className="num">{q.assigned_marks}</td></tr>)}</tbody></table>)}
+          <table className="table"><thead><tr><th>#</th><th>Question</th><th>Type</th><th className="num">Marks</th></tr></thead><tbody>{x.questions.map((q: any, i: number) => <tr key={q.id}><td>{i + 1}</td><td>{q.prompt}</td><td>{label(q.type)}</td><td className="num">{q.assigned_marks}</td></tr>)}</tbody></table>)}
       </Card>
       {picking && <BankPicker assessment={x} onClose={() => setPicking(false)} onDone={() => { a.reload(); }} />}
-      {auto && <FormModal title="Pick questions at random" size="narrow" fields={[{ name: 'count', label: 'How many', type: 'number', required: true, min: 1, max: 200 }, { name: 'difficulty', label: 'Difficulty', type: 'select', options: ['easy', 'medium', 'hard'].map((v) => ({ value: v, label: label(v) })) }, { name: 'topic', label: 'Topic', help: 'Optional' }]} initial={{ count: 10 }} onClose={() => setAuto(false)}
+      {auto && <FormModal title="Pick questions at random" size="narrow" fields={[{ name: 'count', label: 'How many', type: 'number', required: true, min: 1, max: 200 }, { name: 'topic', label: 'Topic', help: 'Optional' }]} initial={{ count: 10 }} onClose={() => setAuto(false)}
         onSubmit={async (v) => { const r = await api.post(`/assessments/${id}/questions/auto`, v); toast(r.short_by ? `Added ${r.added}. The bank only had that many matching.` : `Added ${r.added} questions`); a.reload(); }} />}
       {confirm === 'publish' && <ConfirmModal title="Publish this assessment?" message="Trainees on the programme can sit it as soon as it opens. The questions can no longer be changed." confirmLabel="Publish" onClose={() => setConfirm(null)} onConfirm={async () => { await api.post(`/assessments/${id}/publish`, {}); toast('Published'); a.reload(); }} />}
       {confirm === 'close' && <ConfirmModal title="Close this assessment?" message="Nobody can start it any more. Attempts already in progress still finish." confirmLabel="Close" onClose={() => setConfirm(null)} onConfirm={async () => { await api.post(`/assessments/${id}/close`, {}); toast('Closed'); a.reload(); }} />}
@@ -54,7 +54,7 @@ function BankPicker({ assessment, onClose, onDone }: { assessment: any; onClose:
   const existing = useMemo(() => assessment.questions.map((q: any) => q.id), [assessment]);
   const [sel, setSel] = useState<string[]>(existing);
   const toast = useToast();
-  const items = (data?.data ?? []).map((q) => ({ value: q.id, label: q.prompt.slice(0, 120), sub: `${label(q.type)} · ${q.difficulty} · ${q.marks} mark${q.marks === 1 ? '' : 's'}${q.topic ? ` · ${q.topic}` : ''}`, group: q.topic || 'General' }));
+  const items = (data?.data ?? []).map((q) => ({ value: q.id, label: q.prompt.slice(0, 120), sub: `${label(q.type)} · ${q.marks} mark${q.marks === 1 ? '' : 's'}${q.topic ? ` · ${q.topic}` : ''}`, group: q.topic || 'General' }));
   return (
     <Modal title="Add questions from the bank" size="wide" onClose={onClose} footer={<><button className="btn outline" onClick={onClose}>Cancel</button><button className="btn" onClick={async () => { try { await api.put(`/assessments/${assessment.id}/questions`, { items: sel.map((question_id) => ({ question_id })) }); toast('Questions saved'); onDone(); onClose(); } catch (e) { toast((e as ApiError).message, 'error'); } }}>Save selection</button></>}>
       {!data ? <Loading /> : <ChecklistPicker items={items} selected={sel} onChange={setSel} placeholder="Search questions" />}

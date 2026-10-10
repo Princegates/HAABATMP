@@ -12,7 +12,7 @@ const nums = (s: string) => s.split(/[,\s]+/).filter(Boolean).map((x) => Number(
 function toState(q: any) {
   const o = q?.options; const a = q?.answer;
   return {
-    type: q?.type ?? 'mcq_single', prompt: q?.prompt ?? '', difficulty: q?.difficulty ?? 'medium', marks: String(q?.marks ?? 1), topic: q?.topic ?? '', explanation: q?.explanation ?? '', course_id: q?.course_id ?? '',
+    type: q?.type ?? 'mcq_single', prompt: q?.prompt ?? '', marks: String(q?.marks ?? 1), topic: q?.topic ?? '', explanation: q?.explanation ?? '', course_id: q?.course_id ?? '',
     optionsText: Array.isArray(o) ? o.join('\n') : '', single: q?.type === 'mcq_single' && Number.isInteger(a) ? String(a + 1) : '', multi: q?.type === 'mcq_multi' && Array.isArray(a) ? a.map((x: number) => x + 1).join(', ') : '',
     tf: q?.type === 'true_false' ? String(a) : 'true', accepted: q?.type === 'short_answer' && Array.isArray(a) ? a.join('\n') : '',
     left: o?.left ? o.left.join('\n') : '', right: o?.right ? o.right.join('\n') : '', mapping: q?.type === 'matching' && Array.isArray(a) ? a.map((x: number) => x + 1).join(', ') : '',
@@ -37,7 +37,7 @@ export function QuestionModal({ question, courses, courseId, onClose, onSaved }:
       else if (v.type === 'true_false') answer = v.tf === 'true';
       else if (v.type === 'short_answer') answer = lines(v.accepted);
       else if (v.type === 'matching') { options = { left: lines(v.left), right: lines(v.right) }; answer = nums(v.mapping).map((n) => n - 1); }
-      const body: any = { type: v.type, prompt: v.prompt, difficulty: v.difficulty, marks: Number(v.marks), topic: v.topic || null, explanation: v.explanation || null, options, answer };
+      const body: any = { type: v.type, prompt: v.prompt, marks: Number(v.marks), topic: v.topic || null, explanation: v.explanation || null, options, answer };
       if (question) await api.patch(`/questions/${question.id}`, body); else await api.post('/questions', { ...body, course_id: v.course_id });
       onSaved(); onClose();
     } catch (e) { const ae = e as ApiError; setErr(ae.issues?.length ? ae.issues.map((i) => `${i.path}: ${i.message}`).join('; ') : ae.message); setBusy(false); }
@@ -49,7 +49,6 @@ export function QuestionModal({ question, courses, courseId, onClose, onSaved }:
         <div className="form-grid">
           {!question && f({ name: 'course_id', label: 'Course', type: 'select', required: true, options: courses, full: true }, 'course_id')}
           {f({ name: 'type', label: 'Type', type: 'select', required: true, options: TYPES.map(([value, l]) => ({ value, label: l })), disabled: !!question }, 'type')}
-          {f({ name: 'difficulty', label: 'Difficulty', type: 'select', required: true, options: ['easy', 'medium', 'hard'].map((x) => ({ value: x, label: label(x) })) }, 'difficulty')}
           {f({ name: 'prompt', label: 'Question', type: 'textarea', required: true, full: true }, 'prompt')}
           {f({ name: 'marks', label: 'Marks', type: 'number', required: true, min: 0.5, step: 0.5 }, 'marks')}{f({ name: 'topic', label: 'Topic', help: 'Used to pick questions by topic' }, 'topic')}
         </div>

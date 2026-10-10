@@ -10,7 +10,6 @@ import { validateQuestionShape } from './grading';
  *   C. Annex 14
  *   Answer: B
  *   Marks: 2          (optional, default 1)
- *   Level: easy       (optional: easy, medium or hard)
  *   Topic: AVSEC      (optional)
  *   Explanation: ...  (optional)
  *
@@ -26,7 +25,6 @@ export interface ParsedQuestion {
   options: string[] | null;
   answer: number | number[] | boolean | string[] | null;
   marks: number;
-  difficulty: 'easy' | 'medium' | 'hard';
   topic: string | null;
   explanation: string | null;
   problems: string[];
@@ -151,14 +149,10 @@ function parseBlock(b: Block, n: number): ParsedQuestion {
   const marksNum = f.mark ? Number(String(f.mark).replace(/[^\d.]/g, '')) : f.point ? Number(String(f.point).replace(/[^\d.]/g, '')) : 1;
   const marks = Number.isFinite(marksNum) && marksNum > 0 && marksNum <= 100 ? marksNum : 1;
   if (f.mark && !(marksNum > 0 && marksNum <= 100)) problems.push(`Marks "${f.mark}" must be a number between 0.5 and 100`);
-  const lvl = (f.level ?? f.difficulty ?? 'medium').toLowerCase();
-  const difficulty = (['easy', 'medium', 'hard'].includes(lvl) ? lvl : 'medium') as ParsedQuestion['difficulty'];
-  if ((f.level ?? f.difficulty) && !['easy', 'medium', 'hard'].includes(lvl)) problems.push(`Level "${f.level ?? f.difficulty}" must be easy, medium or hard`);
-
   if (!problems.length) { const shape = validateQuestionShape(type, opts, answer); if (shape) problems.push(shape); }
   if (prompt.length > 4000) problems.push('The question text is longer than 4000 characters');
 
-  return { n, prompt, type: type ?? 'essay', options: opts, answer, marks, difficulty, topic: f.topic?.slice(0, 200) || null, explanation: f.explanation?.slice(0, 3000) || null, problems };
+  return { n, prompt, type: type ?? 'essay', options: opts, answer, marks, topic: f.topic?.slice(0, 200) || null, explanation: f.explanation?.slice(0, 3000) || null, problems };
 }
 
 export function parseQuestionLines(lines: string[]): ParsedQuestion[] {

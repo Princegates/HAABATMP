@@ -4,7 +4,7 @@ import { api, ApiError } from '@/lib/api';
 import { Badge, Modal } from './ui';
 import { label } from '@/lib/format';
 
-interface Parsed { n: number; prompt: string; type: string; options: string[] | null; answer: any; marks: number; difficulty: string; duplicate: boolean; problems: string[] }
+interface Parsed { n: number; prompt: string; type: string; options: string[] | null; answer: any; marks: number; duplicate: boolean; problems: string[] }
 interface Preview { total: number; ready: number; with_problems: number; duplicates: number; questions: Parsed[]; can_import: boolean }
 
 const letters = 'ABCDEFGH';

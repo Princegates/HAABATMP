@@ -20,7 +20,6 @@ const questionBody = z.object({
   course_id: uuid,
   module_id: uuid.nullish(),
   topic: z.string().trim().max(200).nullish(),
-  difficulty: z.enum(['easy', 'medium', 'hard']).default('medium'),
   type: z.enum(TYPES),
   prompt: z.string().trim().min(3).max(4000),
   options: z.any().nullish(),
@@ -52,13 +51,12 @@ export class AssessmentsController {
   @Require('questions:write', 'assessments:read')
   async questions(@CurrentUser() u: AuthUser, @Query() query: unknown) {
     if (u.role === 'trainee') throw new ForbiddenException();
-    const f = parse(pageQuery.extend({ course_id: uuid.optional(), module_id: uuid.optional(), difficulty: z.enum(['easy', 'medium', 'hard']).optional(), type: z.enum(TYPES).optional(), topic: z.string().max(200).optional(), status: z.enum(['active', 'retired']).default('active') }), query);
+    const f = parse(pageQuery.extend({ course_id: uuid.optional(), module_id: uuid.optional(), type: z.enum(TYPES).optional(), topic: z.string().max(200).optional(), status: z.enum(['active', 'retired']).default('active') }), query);
     const params: any[] = [f.status];
     const where = ['q.status = $1'];
     const add = (sql: string, v: any) => { params.push(v); where.push(sql.replace('?', `$${params.length}`)); };
     if (f.course_id) add('q.course_id = ?', f.course_id);
     if (f.module_id) add('q.module_id = ?', f.module_id);
-    if (f.difficulty) add('q.difficulty = ?', f.difficulty);
     if (f.type) add('q.type = ?', f.type);
     if (f.topic) add('q.topic ilike ?', `%${f.topic}%`);
     if (f.q) add('q.prompt ilike ?', `%${f.q}%`);
@@ -75,9 +73,9 @@ export class AssessmentsController {
     if (problem) throw new BadRequestException(problem);
     return this.db.tx(async (q) => {
       const row = await q.one(
-        `insert into questions (course_id,module_id,topic,difficulty,type,prompt,options,answer,marks,explanation,created_by)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,
-        [d.course_id, d.module_id ?? null, d.topic ?? null, d.difficulty, d.type, d.prompt, d.options == null ? null : JSON.stringify(d.options), d.answer == null ? null : JSON.stringify(d.answer), d.marks, d.explanation ?? null, u.id]);
+        `insert into questions (course_id,module_id,topic,type,prompt,options,answer,marks,explanation,created_by)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,
+        [d.course_id, d.module_id ?? null, d.topic ?? null, d.type, d.prompt, d.options == null ? null : JSON.stringify(d.options), d.answer == null ? null : JSON.stringify(d.answer), d.marks, d.explanation ?? null, u.id]);
       await this.audit.log(q, actor, 'question.create', 'question', row.id, null, { id: row.id, type: row.type, course_id: row.course_id });
       return row;
     });
@@ -117,9 +115,9 @@ export class AssessmentsController {
     await this.db.tx(async (q) => {
       for (const d of toAdd) {
         await q.query(
-          `insert into questions (course_id,topic,difficulty,type,prompt,options,answer,marks,explanation,created_by)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-          [course_id, d.topic, d.difficulty, d.type, d.prompt, d.options == null ? null : JSON.stringify(d.options), d.answer == null ? null : JSON.stringify(d.answer), d.marks, d.explanation, u.id]);
+          `insert into questions (course_id,topic,type,prompt,options,answer,marks,explanation,created_by)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [course_id, d.topic, d.type, d.prompt, d.options == null ? null : JSON.stringify(d.options), d.answer == null ? null : JSON.stringify(d.answer), d.marks, d.explanation, u.id]);
       }
       await this.audit.log(q, actor, 'question.import', 'course', course_id, null, { file: file.originalname.slice(0, 120), imported: toAdd.length, skipped_duplicates: summary.duplicates });
     });
@@ -248,18 +246,17 @@ export class AssessmentsController {
     });
   }
 
-  /** Draws random questions from the bank, optionally by difficulty, topic or module. */
+  /** Draws random questions from the bank, optionally by topic or module. */
   @Post('assessments/:id/questions/auto')
   @Require('assessments:write')
   async autoPick(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() body: unknown, @ActorCtx() actor: Actor) {
     parse(uuid, id);
-    const d = parse(z.object({ count: z.number().int().min(1).max(200), difficulty: z.enum(['easy', 'medium', 'hard']).optional(), topic: z.string().max(200).optional(), module_id: uuid.optional(), types: z.array(z.enum(TYPES)).optional() }), body);
+    const d = parse(z.object({ count: z.number().int().min(1).max(200), topic: z.string().max(200).optional(), module_id: uuid.optional(), types: z.array(z.enum(TYPES)).optional() }), body);
     const a = await this.loadManaged(u, id);
     if (a.status !== 'draft') throw new ConflictException('Questions can only be changed while the assessment is a draft');
     return this.db.tx(async (q) => {
       const params: any[] = [a.course_id, id];
       const where = [`q.course_id = $1`, `q.status = 'active'`, `q.id not in (select question_id from assessment_questions where assessment_id = $2)`];
-      if (d.difficulty) { params.push(d.difficulty); where.push(`q.difficulty = $${params.length}`); }
       if (d.topic) { params.push(d.topic); where.push(`q.topic ilike $${params.length}`); }
       if (d.module_id) { params.push(d.module_id); where.push(`q.module_id = $${params.length}`); }
       if (d.types?.length) { params.push(d.types); where.push(`q.type = any($${params.length}::text[])`); }

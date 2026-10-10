@@ -99,7 +99,7 @@ test('word import: reads every question type and ignores headings and notes', as
   ]);
   assert.equal(qs.length, 5);
   assert.deepEqual(qs.map((q) => q.type), ['mcq_single', 'mcq_multi', 'true_false', 'short_answer', 'essay']);
-  assert.equal(qs[0].answer, 1); assert.equal(qs[0].marks, 2); assert.equal(qs[0].difficulty, 'easy'); assert.equal(qs[0].topic, 'AVSEC');
+  assert.equal(qs[0].answer, 1); assert.equal(qs[0].marks, 2); assert.equal(qs[0].topic, 'AVSEC');
   assert.deepEqual(qs[1].answer, [0, 1]); assert.equal(qs[2].answer, true);
   assert.deepEqual(qs[3].answer, ['hazard register', 'the hazard register']);
   assert.ok(qs.every((q) => q.problems.length === 0));
