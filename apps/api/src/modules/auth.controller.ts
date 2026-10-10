@@ -149,12 +149,20 @@ export class AuthController {
       permissions: [...permissionsFor({ role: user.role, can_finalise_results: user.canFinalise })],
       mfa_required: user.mfaEnrolled || (await this.settings.mfaRoles()).has(user.role),
       mfa_required_by_policy: (await this.settings.mfaRoles()).has(user.role),
+      menu: await this.menuFor(user.role),
       mfa_enrolled: user.mfaEnrolled,
       mfa_verified: user.mfa,
       mfa_available: this.env.AUTH_MODE === 'supabase',
       show_finance: user.role !== 'trainee' || (await this.settings.get<{ show_finance: boolean }>('trainee_access')).show_finance
         || (!user.organizationId && (await this.settings.get<{ enabled: boolean }>('public_access')).enabled),
     };
+  }
+
+  /** The menu changes the Super Administrator made for this role. The Super Administrator's own menu is never changed. */
+  private async menuFor(role: string) {
+    if (role === 'super_admin') return { hide: [], show: [] };
+    const s = await this.settings.get<{ overrides?: Record<string, { hide: string[]; show: string[] }> }>('menu_access');
+    return s.overrides?.[role] ?? { hide: [], show: [] };
   }
 
   /** Starts TOTP enrolment (Supabase). The user must be signed in. */

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, useApi } from '@/lib/api';
 import { AuthProvider, ROLE_LABEL, useAuth } from '@/lib/auth';
 import { dateTime, initials } from '@/lib/format';
-import { navFor, TABS } from '@/lib/nav';
+import { isHiddenPath, TABS, visibleNav } from '@/lib/nav';
 import { Icon } from './icons';
 import { Logo } from './logo';
 import { useDebounced } from './ui';
@@ -24,7 +24,7 @@ function isActive(path: string, href: string) {
 function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () => void }) {
   const { me } = useAuth();
   const path = usePathname();
-  const groups = navFor(me.role).filter((g) => !(g.label === 'Finance' && !me.show_finance));
+  const groups = visibleNav(me.role, me.menu, me.permissions).filter((g) => !(g.label === 'Finance' && !me.show_finance));
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   return (
     <aside className={`sidebar ${open ? 'open' : ''}`} aria-label="Main navigation">
@@ -157,7 +157,7 @@ function Account() {
 function BottomBar({ menuOpen, onMore }: { menuOpen: boolean; onMore: () => void }) {
   const { me } = useAuth();
   const path = usePathname();
-  const tabs = TABS[me.role];
+  const tabs = TABS[me.role].filter((t) => !isHiddenPath(me.menu, t.href));
   const onTab = tabs.some((t) => isActive(path, t.href));
   return (
     <nav className="tabbar" aria-label="Quick navigation">
@@ -192,6 +192,7 @@ function useCellLabels(path: string) {
 function Frame({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const path = usePathname();
+  const { me } = useAuth();
   useEffect(() => setOpen(false), [path]);
   useCellLabels(path);
   return (
@@ -205,9 +206,19 @@ function Frame({ children }: { children: React.ReactNode }) {
           <div className="grow" />
           <ThemeToggle /><Bell /><Account />
         </header>
-        <main className="content" id="content">{children}</main>
+        <main className="content" id="content">{isHiddenPath(me.menu, path) ? <TurnedOff /> : children}</main>
       </div>
       <BottomBar menuOpen={open} onMore={() => setOpen((o) => !o)} />
+    </div>
+  );
+}
+
+function TurnedOff() {
+  return (
+    <div className="card" style={{ maxWidth: 560, margin: '48px auto', padding: 28 }}>
+      <h2 style={{ marginTop: 0 }}>This page is not available to you</h2>
+      <p className="muted">An administrator has turned this page off for your role. If you need it, ask them.</p>
+      <Link href="/" className="btn">Go to the home page</Link>
     </div>
   );
 }

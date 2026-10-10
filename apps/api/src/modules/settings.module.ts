@@ -30,10 +30,44 @@ export class SettingsController {
       { key: 'roles', title: 'Roles Permissions', description: 'Who can do what. Fixed in the platform and reviewed by security.', kind: 'roles' as const, status: 'active' as const, can_edit: false },
       { key: 'certificate_templates', title: 'Certificate Templates', description: 'Layouts and signatories for certificates.', kind: 'link' as const, status: 'active' as const, can_edit: ['super_admin', 'training_admin'].includes(u.role) },
       { key: 'users', title: 'Users', description: 'Create and manage accounts.', kind: 'link' as const, status: 'active' as const, can_edit: ['super_admin', 'training_admin'].includes(u.role) },
+      ...(u.role === 'super_admin' ? [{ key: 'menu', title: 'Menu Access', description: 'Choose which menu items each role sees.', kind: 'link' as const, status: 'active' as const, can_edit: true }] : []),
       ...(u.role === 'super_admin' ? [{ key: 'integrations', title: 'API & Integrations', description: 'Keys and connections to outside services.', kind: 'integrations' as const, status: 'active' as const, can_edit: true }] : []),
     ];
     // same order as the reference menu: General first, system and security pages last
-    return [...forms.slice(0, 1), ...extra.slice(3), ...forms.slice(1), ...extra.slice(0, 3)];
+    const sys = extra.filter((e) => e.key === 'integrations' || e.key === 'menu');
+    return [...forms.slice(0, 1), ...sys, ...forms.slice(1), ...extra.filter((e) => !sys.includes(e))];
+  }
+
+  /**
+   * Which menu items each role sees. Only the Super Administrator changes it. It shapes what people are shown; it never
+   * grants anything, because what a role may do is fixed in Roles & Permissions and enforced by the server on every request.
+   */
+  @Get('menu')
+  async menu(@CurrentUser() u: AuthUser) {
+    if (u.role !== 'super_admin') throw new ForbiddenException();
+    const s = await this.settings.get<{ overrides?: Record<string, { hide: string[]; show: string[] }> }>('menu_access');
+    return { overrides: s.overrides ?? {}, permissions: Object.fromEntries(ROLES.map((r) => [r, [...PERMISSIONS[r]]])) };
+  }
+
+  @Put('menu')
+  async saveMenu(@CurrentUser() u: AuthUser, @Body() body: unknown, @ActorCtx() actor: Actor) {
+    if (u.role !== 'super_admin') throw new ForbiddenException();
+    const key = z.string().regex(/^(g:[A-Za-z ]{1,60}|\/[A-Za-z0-9\-_/?=&]{0,100})$/, 'not a menu item');
+    const { overrides } = parse(z.object({ overrides: z.partialRecord(z.enum(ROLES), z.object({ hide: z.array(key).max(100), show: z.array(key).max(100) })) }).strict(), body);
+    // a Super Administrator always keeps the whole menu, and nobody can lose the home page or their own profile
+    if (overrides.super_admin) throw new BadRequestException('The Super Administrator always sees the full menu');
+    for (const [role, o] of Object.entries(overrides)) {
+      if (o.hide.some((k) => k === '/' || k === '/profile')) throw new BadRequestException('The home page and My profile cannot be hidden');
+      if (o.hide.some((k) => o.show.includes(k))) throw new BadRequestException(`${role}: an item cannot be both hidden and shown`);
+    }
+    return this.db.tx(async (q) => {
+      const before = await this.settings.get('menu_access', q);
+      await q.query(
+        `insert into settings (key, value, updated_by) values ('menu_access',$1,$2) on conflict (key) do update set value = excluded.value, updated_by = excluded.updated_by, updated_at = now()`,
+        [JSON.stringify({ overrides }), u.id]);
+      await this.audit.log(q, actor, 'settings.menu_access', 'settings', 'menu_access', before, { overrides });
+      return { overrides };
+    });
   }
 
   @Get('roles')

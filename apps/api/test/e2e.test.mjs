@@ -1059,3 +1059,28 @@ test('30. instructors are never shown what a place costs, anywhere', async () =>
   const mine = ok(await instr.get('/programmes?limit=50')).data.find((p) => p.lead_instructor_id === S.instr);
   if (mine) assert.ok(!hasFee(ok(await instr.get(`/programmes/${mine.id}`))), 'a programme the instructor leads shows no fee');
 });
+
+test('31. the Super Admin chooses which menu items each role sees', async () => {
+  const sa = api(S.sa); const a1 = api(S.tok_a1);
+  assert.deepEqual(ok(await api(S.tok_instr).get('/auth/me')).menu, { hide: [], show: [] }, 'nothing changed by default');
+  refused(await a1.get('/settings/menu'), 403, 'training admins cannot read it'); refused(await a1.put('/settings/menu', { overrides: {} }), 403, 'or change it');
+  const cur = ok(await sa.get('/settings/menu'));
+  assert.ok(cur.permissions.instructor.includes('attendance:read') && !cur.permissions.instructor.includes('invoices:read'), 'the screen learns what each role may use');
+  // safety rules
+  refused(await sa.put('/settings/menu', { overrides: { instructor: { hide: ['/'], show: [] } } }), 400, 'the home page cannot be hidden');
+  refused(await sa.put('/settings/menu', { overrides: { super_admin: { hide: ['/courses'], show: [] } } }), 400, 'the super administrator keeps the full menu');
+  refused(await sa.put('/settings/menu', { overrides: { instructor: { hide: ['/x'], show: ['/x'] } } }), 400, 'hidden and shown at once');
+  refused(await sa.put('/settings/menu', { overrides: { instructor: { hide: ['javascript:alert(1)'], show: [] } } }), 400, 'only menu paths');
+  // hide Reports from instructors and Compliance from client administrators
+  ok(await sa.put('/settings/menu', { overrides: { instructor: { hide: ['/reports', 'g:Documents'], show: [] }, org_admin: { hide: ['/compliance'], show: [] } } }));
+  assert.deepEqual(ok(await api(S.tok_instr).get('/auth/me')).menu, { hide: ['/reports', 'g:Documents'], show: [] });
+  assert.deepEqual(ok(await api(S.tok_aa).get('/auth/me')).menu.hide, ['/compliance']);
+  assert.deepEqual(ok(await sa.get('/auth/me')).menu, { hide: [], show: [] }, 'the super administrator is never affected');
+  assert.deepEqual(ok(await api(S.tok_T1).get('/auth/me')).menu, { hide: [], show: [] }, 'other roles are unchanged');
+  assert.ok((await db.query(`select 1 from audit_logs where action = 'settings.menu_access'`)).rowCount > 0, 'the change is in the audit log');
+  // a hidden page is a menu choice: the server still decides what each role may do
+  ok(await api(S.tok_instr).get('/reports?limit=1').then((r) => ({ status: r.status < 500 ? 200 : r.status, body: r.body })));
+  // put it back
+  ok(await sa.put('/settings/menu', { overrides: {} }));
+  assert.deepEqual(ok(await api(S.tok_instr).get('/auth/me')).menu, { hide: [], show: [] });
+});
