@@ -10,6 +10,7 @@
     "seed": "node dist/scripts/seed.js",
     "seed-catalogue": "node dist/scripts/seed-catalogue.js",
     "seed-sample": "node dist/scripts/seed-sample.js",
+    "reset-data": "node dist/scripts/reset-data.js",
     "jobs": "node dist/scripts/jobs.js",
     "test": "npm run build && node --test test/*.test.mjs",
     "create-super-admin": "node dist/scripts/create-super-admin.js"
