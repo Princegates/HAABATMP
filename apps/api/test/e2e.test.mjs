@@ -1163,3 +1163,23 @@ test('33. the Super Admin can delete a course that has demo programmes, registra
   assert.equal(gone.courses_deleted, 1);
   refused(await sa.get(`/programmes/${d3.p.id}`), 404);
 });
+
+test('34. programmes and courses are grouped by client', async () => {
+  const a1 = api(S.tok_a1);
+  const orgA = ok(await a1.post('/organizations', { name: `Group A ${run}`, type: 'airline' }));
+  const orgB = ok(await a1.post('/organizations', { name: `Group B ${run}`, type: 'airport' }));
+  const course = ok(await a1.post('/courses', { code: `GRP-${run}`.toUpperCase(), title: 'Grouped', category_id: S.course.category_id, duration_hours: 2, fee: 0, pass_mark: 50, min_attendance_pct: 0, status: 'active' }));
+  const reserved = ok(await a1.post('/programmes', { course_id: course.id, start_date: day(90), end_date: day(91), capacity: 5, fee: 0, organization_id: orgA.id }));
+  const loose = ok(await a1.post('/programmes', { course_id: course.id, start_date: day(95), end_date: day(96), capacity: 5, fee: 0 }));
+  const r = ok(await a1.get('/programmes/by-client')).data;
+  const find = (id) => r.find((g) => g.organization_id === id);
+  assert.ok(find(orgA.id).courses.find((c) => c.id === course.id).programmes.some((p) => p.id === reserved.id && p.reserved));
+  assert.equal(find(orgB.id), undefined, 'a client with nothing does not appear');
+  assert.ok(r.find((g) => g.organization_id === null).courses.some((c) => c.programmes.some((p) => p.id === loose.id)), 'unlinked programmes come last under "No client yet"');
+  assert.equal(r[r.length - 1].organization_id, null);
+  // a client sees only itself; people who are not staff of a client or HAAB are refused
+  const ca = ok(await api(S.tok_aa).get('/programmes/by-client')).data;
+  assert.ok(ca.length >= 1 && ca.every((g) => g.organization_id === S.orgA), 'a client sees only its own, never the unlinked group');
+  refused(await api(S.tok_T1).get('/programmes/by-client'), 403, 'trainees');
+  refused(await api(S.tok_instr).get('/programmes/by-client'), 403, 'instructors');
+});

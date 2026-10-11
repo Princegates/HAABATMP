@@ -1,5 +1,6 @@
 'use client';
 import { Suspense, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -32,6 +33,7 @@ function Inner() {
     <>
       <PageHead title={is('trainee') ? 'Programmes' : 'Training'} accent={is('trainee') ? 'open for registration' : 'programmes'} subtitle={is('trainee') ? 'Programmes you can register for, and the ones you are already on.' : 'Each programme is one scheduled run of a course, with its own dates, people and results.'}
         actions={can('programmes:write') && <button className="btn" onClick={() => setForm(true)}>New programme</button>} />
+      {(can('orgs:read') || is('org_admin')) && <div className="row" style={{ marginBottom: 12, gap: 8 }}><span className="btn sm" aria-current="page">List view</span><Link className="btn outline sm" href="/programmes/by-client">By client</Link></div>}
       <DataList path="/programmes" columns={columns} refreshKey={tick} searchPlaceholder="Search code or title"
         filters={[{ name: 'status', label: 'Status', options: STATUSES }, { name: 'course_id', label: 'Course', options: courses }]} empty={{ title: 'No programmes to show', hint: can('programmes:write') ? 'Create a programme from an active course.' : 'Nothing is open for registration right now.' }} />
       {form && <FormModal title="New programme" size="wide" fields={programmeFields({ courses, rooms, instructors, orgs, creating: true })} initial={{}} onClose={() => setForm(false)}

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, ConflictException, Controller, Delete, Get, Module, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, ForbiddenException, ConflictException, Controller, Delete, Get, Module, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { z } from 'zod';
 import { Actor, AuthUser } from '../common/auth.types';
 import { AuditService } from '../common/audit.service';
@@ -133,8 +133,49 @@ export class ProgrammesController {
     return { data, total };
   }
 
-  @Get('programmes/:id')
+  /**
+   * Programmes and their courses grouped by client. A programme belongs to a client when it is reserved for them, or when
+   * they have trainees registered on it (the sponsoring organisation, else the trainee's own). A programme shared by
+   * several clients appears under each, with that client's trainee count. Programmes with no client yet come last.
+   */
+  @Get('programmes/by-client')
   @Require('programmes:read')
+  async byClient(@CurrentUser() u: AuthUser) {
+    if (!seesAllClients(u) && u.role !== 'org_admin') throw new ForbiddenException();
+    const own = u.role === 'org_admin' ? u.organizationId : null;
+    const rows = await this.db.query<any>(
+      `with links as (
+         select p.id as programme_id, p.organization_id as org_id, true as reserved, 0 as trainees from programmes p where p.organization_id is not null
+         union all
+         select e.programme_id, coalesce(e.sponsor_organization_id, t.organization_id), false, count(*)::int
+           from enrollments e join users t on t.id = e.trainee_id
+          where e.status in ('pending','confirmed','completed') and coalesce(e.sponsor_organization_id, t.organization_id) is not null
+          group by 1, 2
+       ), merged as (
+         select programme_id, org_id, bool_or(reserved) as reserved, sum(trainees)::int as trainees from links group by 1, 2
+       )
+       select m.org_id, o.name as org_name, o.type as org_type, m.reserved, m.trainees,
+              p.id, p.code, p.title, p.start_date, p.end_date, p.status, p.capacity, c.id as course_id, c.code as course_code, c.title as course_title
+         from programmes p join courses c on c.id = p.course_id
+         left join merged m on m.programme_id = p.id
+         left join organizations o on o.id = m.org_id
+        where ($1::uuid is null or (m.org_id = $1 and p.status <> 'draft'))
+        order by o.name nulls last, c.code, p.start_date desc`, [own]);
+    const groups: any[] = [];
+    const byKey = new Map<string, any>();
+    for (const r of rows) {
+      const key = r.org_id ?? 'none';
+      let g = byKey.get(key);
+      if (!g) { g = { organization_id: r.org_id, name: r.org_name ?? 'No client yet', type: r.org_type, courses: [] as any[], _c: new Map<string, any>() }; byKey.set(key, g); groups.push(g); }
+      let c = g._c.get(r.course_id);
+      if (!c) { c = { id: r.course_id, code: r.course_code, title: r.course_title, programmes: [] }; g._c.set(r.course_id, c); g.courses.push(c); }
+      c.programmes.push({ id: r.id, code: r.code, title: r.title, start_date: r.start_date, end_date: r.end_date, status: r.status, capacity: r.capacity, reserved: !!r.reserved, trainees: r.trainees ?? 0 });
+    }
+    for (const g of groups) { delete g._c; g.programme_count = g.courses.reduce((n: number, c: any) => n + c.programmes.length, 0); }
+    return { data: groups };
+  }
+
+  @Get('programmes/:id')  @Require('programmes:read')
   async get(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     parse(uuid, id);
     const p = await this.visible(u, id);
