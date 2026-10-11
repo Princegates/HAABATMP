@@ -7,6 +7,7 @@ import { Db, Q } from '../common/db.service';
 import { ActorCtx, CurrentUser, Require } from '../common/decorators';
 import { serviceHeaders } from '../common/supabase';
 import { parse, uuid } from '../common/validation';
+import { plural, removeEnrolments, removeProgramme } from '../common/cascade';
 
 /**
  * Super Administrator deletions.
@@ -19,41 +20,12 @@ import { parse, uuid } from '../common/validation';
  * of what was removed. Only `settings:write` holders (Super Administrators) reach these routes.
  */
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 @Controller()
 export class DeletionsController {
   constructor(private readonly db: Db, private readonly audit: AuditService, @Inject(ENV) private readonly env: Env) {}
 
   // ---------------------------------------------------------------- shared
-
-  /** The official record that blocks a delete, among these enrolments. */
-  private async officialRecord(q: Q, enrolmentIds: string[]) {
-    if (!enrolmentIds.length) return [];
-    const r = await q.one<{ certificates: number; results: number; payments: number }>(
-      `select (select count(*) from certificates where enrollment_id = any($1))::int as certificates,
-              (select count(*) from results where enrollment_id = any($1) and finalised)::int as results,
-              (select count(*) from payments p join invoices i on i.id = p.invoice_id where i.enrollment_id = any($1))::int as payments`, [enrolmentIds]);
-    return [r!.certificates && plural(r!.certificates, 'certificate'), r!.results && plural(r!.results, 'finalised result'), r!.payments && plural(r!.payments, 'recorded payment')].filter(Boolean) as string[];
-  }
-
-  /** Removes enrolments and what hangs off them. Refuses when official records exist. */
-  private async removeEnrolments(q: Q, ids: string[], who: string) {
-    const official = await this.officialRecord(q, ids);
-    if (official.length) {
-      throw new ConflictException(`${who} cannot be deleted because of ${official.join(', ')}. These are the official record and are never deleted. Revoke the certificate or refund the payment, or suspend or cancel instead.`);
-    }
-    if (!ids.length) return;
-    await q.query(
-      `delete from attendance a using enrollments e, sessions s
-        where e.id = any($1) and s.programme_id = e.programme_id and a.session_id = s.id and a.trainee_id = e.trainee_id`, [ids]);
-    await q.query(
-      `delete from exam_attempts x using enrollments e, assessments a
-        where e.id = any($1) and a.programme_id = e.programme_id and x.assessment_id = a.id and x.trainee_id = e.trainee_id`, [ids]);
-    await q.query('delete from results where enrollment_id = any($1)', [ids]);
-    await q.query('delete from invoices where enrollment_id = any($1)', [ids]);
-    await q.query('delete from enrollments where id = any($1)', [ids]);
-  }
 
   private async removeUser(q: Q, id: string, actor: Actor, me: AuthUser): Promise<{ row: any; authUserId: string | null }> {
     const row = await q.one<any>('select * from users where id = $1 for update', [id]);
@@ -93,7 +65,7 @@ export class DeletionsController {
 
     // as a trainee
     const enrolments = (await q.query<{ id: string }>('select id from enrollments where trainee_id = $1', [id])).map((e) => e.id);
-    await this.removeEnrolments(q, enrolments, name);
+    await removeEnrolments(q, enrolments, name);
     await q.query('delete from exam_attempts where trainee_id = $1', [id]);
     await q.query('delete from attendance where trainee_id = $1', [id]);
     await q.query('delete from invoices where trainee_id = $1', [id]);
@@ -171,15 +143,7 @@ export class DeletionsController {
     return this.db.tx(async (q) => {
       const p = await q.one<any>('select * from programmes where id = $1 for update', [id]);
       if (!p) throw new NotFoundException();
-      const enrolments = (await q.query<{ id: string }>('select id from enrollments where programme_id = $1', [id])).map((e) => e.id);
-      await this.removeEnrolments(q, enrolments, p.code);
-      const certs = await q.one<{ n: number }>('select count(*)::int n from certificates where programme_id = $1', [id]);
-      if (certs && certs.n) throw new ConflictException(`${p.code} cannot be deleted because of ${plural(certs.n, 'certificate')}. Certificates are the official record and are never deleted.`);
-      // assessments set for this programme go with it, with any attempts
-      await q.query('delete from exam_attempts where assessment_id in (select id from assessments where programme_id = $1)', [id]);
-      await q.query('delete from assessments where programme_id = $1', [id]);
-      await q.query('delete from invoices where programme_id = $1', [id]);
-      await q.query('delete from programmes where id = $1', [id]); // sessions and their attendance go with it
+      const enrolments = await removeProgramme(q, p);
       await this.audit.log(q, actor, 'programme.delete', 'programme', id, { ...p, registrations_deleted: enrolments.length }, null);
       return { ok: true, deleted: p.code };
     });
@@ -192,7 +156,7 @@ export class DeletionsController {
     return this.db.tx(async (q) => {
       const e = await q.one<any>('select * from enrollments where id = $1 for update', [id]);
       if (!e) throw new NotFoundException();
-      await this.removeEnrolments(q, [id], 'This registration');
+      await removeEnrolments(q, [id], 'This registration');
       await this.audit.log(q, actor, 'enrollment.delete', 'enrollment', id, e, null);
       return { ok: true };
     });

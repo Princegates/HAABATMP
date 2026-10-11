@@ -575,6 +575,8 @@ test('15. scheduled jobs run cleanly and are idempotent', async () => {
   assert.equal(run1.status, 0, run1.stderr);
   const out1 = JSON.parse(run1.stdout.trim().split('\n').pop());
   assert.ok('emails_sent' in out1);
+  // mail the earlier tests queued in the background may still be going out on the first run, so settle once before checking
+  spawnSync('node', ['dist/scripts/jobs.js'], { env: process.env, encoding: 'utf8' });
   const run2 = spawnSync('node', ['dist/scripts/jobs.js'], { env: process.env, encoding: 'utf8' });
   assert.equal(run2.status, 0, run2.stderr);
   assert.equal(JSON.parse(run2.stdout.trim().split('\n').pop()).emails_sent, 0, 'nothing is sent twice');
@@ -1122,4 +1124,42 @@ test('32. instructors add learning material to courses they teach, and only remo
   ok(await a1.delete(`/modules/${mod.id}`)); // staff can remove anything
   // an instructor's account can still be deleted afterwards: the author pointers are released
   await db.query('select 1');
+});
+
+test('33. the Super Admin can delete a course that has demo programmes, registrations and assessments, but not one with a certificate', async () => {
+  const sa = api(S.sa); const a1 = api(S.tok_a1);
+  const cat = ok(await a1.post('/course-categories', { code: letters(3), name: `Demo ${run}` }));
+  const mk = async (tag) => {
+    const c = ok(await a1.post('/courses', { code: `${tag}-${run}`.toUpperCase(), title: `Demo ${tag}`, category_id: cat.id, duration_hours: 4, fee: 100, pass_mark: 50, min_attendance_pct: 0, status: 'active' }));
+    const p = ok(await a1.post('/programmes', { course_id: c.id, start_date: day(80), end_date: day(81), lead_instructor_id: S.instr, capacity: 5, fee: 100 }));
+    ok(await a1.post(`/programmes/${p.id}/status`, { status: 'open_for_registration' }));
+    const e = ok(await a1.post(`/programmes/${p.id}/enrol`, { trainee_ids: [S.t2] }));
+    ok(await a1.post(`/enrollments/${e.enrolled[0].id}/confirm`, {}));
+    const q = ok(await a1.post('/questions', { course_id: c.id, type: 'true_false', prompt: `Demo ${tag} ${run}`, answer: true, marks: 1 }));
+    const asm = ok(await a1.post('/assessments', { course_id: c.id, programme_id: p.id, title: `Demo ${tag}`, duration_minutes: 10, pass_mark: 50, max_attempts: 1 }));
+    ok(await a1.put(`/assessments/${asm.id}/questions`, { items: [{ question_id: q.id }] }));
+    return { c, p, e: e.enrolled[0] };
+  };
+  const d1 = await mk('DA');
+  // the training admin is still stopped, and cannot ask for the cascade
+  refused(await a1.delete(`/courses/${d1.c.id}`), 409, 'a used course is protected for ordinary admins');
+  refused(await a1.delete(`/courses/${d1.c.id}?with_records=true`), 403, 'only the Super Admin may cascade');
+  // the Super Admin removes it with everything under it
+  ok(await sa.delete(`/courses/${d1.c.id}?with_records=true`));
+  refused(await sa.get(`/courses/${d1.c.id}`), 404);
+  refused(await sa.get(`/programmes/${d1.p.id}`), 404);
+  // a course with an issued certificate is the official record and stays
+  const d2 = await mk('DB');
+  await db.query(`insert into certificates (number, verification_token, enrollment_id, trainee_id, programme_id, course_id)
+    select 'DEMO-${run}', 'demotoken${run}', e.id, e.trainee_id, e.programme_id, $2 from enrollments e where e.id = $1`, [d2.e.id, d2.c.id]);
+  const blocked = await sa.delete(`/courses/${d2.c.id}?with_records=true`);
+  refused(blocked, 409, 'official record');
+  ok(await sa.get(`/courses/${d2.c.id}`));
+  // a category of demo courses goes in one go
+  const d3 = await mk('DC');
+  const cat3 = ok(await a1.post('/course-categories', { code: letters(3), name: `Demo cat ${run}` }));
+  ok(await a1.patch(`/courses/${d3.c.id}`, { category_id: cat3.id }));
+  const gone = ok(await sa.delete(`/course-categories/${cat3.id}?with_courses=true`));
+  assert.equal(gone.courses_deleted, 1);
+  refused(await sa.get(`/programmes/${d3.p.id}`), 404);
 });

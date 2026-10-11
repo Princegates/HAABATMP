@@ -38,8 +38,8 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
     <>
       <PageHead title={c.title} crumbs={[{ label: 'Courses', href: '/courses' }, { label: c.code }]} subtitle={<><span className="mono">{c.code}</span> · {c.category_name} · <Badge value={c.status} /></>} actions={w && <span className="row"><button className="btn outline" onClick={() => setEdit(true)}>Edit course</button><button className="btn ghost" onClick={() => setDel(true)}>Delete</button></span>} />
       {del && <ConfirmModal title={`Delete ${c.code}?`} danger confirmLabel="Delete course" onClose={() => setDel(false)}
-        message={<>Delete <b>{c.title}</b> and its modules, question bank and requirements? This cannot be undone. If it has programmes, certificates or assessments, the platform will refuse and you can archive it instead (Edit course, then set the status to Archived).</>}
-        onConfirm={async () => { await api.del(`/courses/${id}`); toast('Course deleted'); router.push('/courses'); }} />}
+        message={me.role === 'super_admin' ? <>Delete <b>{c.title}</b> with its modules, question bank, requirements, <b>and any programmes, registrations, attendance and assessments under it</b>? This cannot be undone. If a certificate has been issued, or a result finalised or payment recorded, those are the official record and the delete is refused; archive the course instead.</> : <>Delete <b>{c.title}</b> and its modules, question bank and requirements? This cannot be undone. If it has programmes, certificates or assessments, the platform will refuse and you can archive it instead (Edit course, then set the status to Archived).</>}
+        onConfirm={async () => { await api.del(`/courses/${id}${me.role === 'super_admin' ? '?with_records=true' : ''}`); toast('Course deleted'); router.push('/courses'); }} />}
       <Tabs value={tab} onChange={setTab} tabs={[{ key: 'overview', label: 'Overview' }, { key: 'content', label: 'Modules and materials', count: c.modules.length }, { key: 'requirements', label: 'Requirements' }, { key: 'programmes', label: 'Programmes' }]} />
       {tab === 'overview' && (
         <div className="grid c2">

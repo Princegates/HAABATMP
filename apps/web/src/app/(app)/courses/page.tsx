@@ -12,7 +12,8 @@ import { money, label } from '@/lib/format';
 import { useCategoryOptions } from '@/lib/options';
 
 function Inner() {
-  const { can, is } = useAuth();
+  const { can, is, me } = useAuth();
+  const sa = me.role === 'super_admin';
   const toast = useToast();
   const params = useSearchParams();
   const cats = useCategoryOptions();
@@ -33,8 +34,8 @@ function Inner() {
         actions={(c) => can('courses:write') && <span className="row" style={{ justifyContent: 'flex-end' }}><button className="btn ghost sm" onClick={() => setDel(c)}>Delete</button></span>}
         empty={{ title: 'No courses yet', hint: can('courses:write') ? 'Create the first course to start scheduling programmes.' : undefined }} />
       {del && <ConfirmModal title={`Delete ${del.code}?`} danger confirmLabel="Delete course" onClose={() => setDel(null)}
-        message={<>Delete <b>{del.title}</b> and its modules, question bank and requirements? This cannot be undone. If it has programmes, certificates or assessments, the platform will refuse and you can archive it instead.</>}
-        onConfirm={async () => { await api.del(`/courses/${del.id}`); toast('Course deleted'); setTick((t) => t + 1); }} />}
+        message={sa ? <>Delete <b>{del.title}</b> with its modules, question bank, requirements, <b>and any programmes, registrations, attendance and assessments under it</b>? This cannot be undone. If a certificate has been issued, or a result finalised or payment recorded, those are the official record and the delete is refused; archive the course instead.</> : <>Delete <b>{del.title}</b> and its modules, question bank and requirements? This cannot be undone. If it has programmes, certificates or assessments, the platform will refuse and you can archive it instead.</>}
+        onConfirm={async () => { await api.del(`/courses/${del.id}${sa ? '?with_records=true' : ''}`); toast('Course deleted'); setTick((t) => t + 1); }} />}
       {form && <FormModal title="New course" size="wide" fields={courseFields(cats)} initial={{ delivery_method: 'classroom', duration_hours: 8, capacity: 20, fee: 0, pass_mark: 70, min_attendance_pct: 80, status: 'draft' }} onClose={() => setForm(false)}
         onSubmit={async (v) => { await api.post('/courses', v); toast('Course created'); setTick((t) => t + 1); }} />}
     </>

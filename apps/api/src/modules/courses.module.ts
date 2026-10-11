@@ -15,6 +15,7 @@ import { Db, Q } from '../common/db.service';
 import { ActorCtx, CurrentUser, Require } from '../common/decorators';
 import { isStaff } from '../common/scope';
 import { isoDate, pageQuery, parse, uuid, patchOf } from '../common/validation';
+import { plural, removeProgramme } from '../common/cascade';
 
 const categoryBody = z.object({
   code: z.string().trim().toUpperCase().regex(/^[A-Z]{2,5}$/, 'two to five capital letters'),
@@ -97,9 +98,18 @@ export class CoursesController {
    * Deleting is only allowed while nothing real depends on the course. Once a programme, a certificate or an assessment
    * exists, the training record has to stay, so the answer is "archive it instead".
    */
-  private async deleteCourseIn(q: Q, id: string, actor: Actor) {
+  private async deleteCourseIn(q: Q, id: string, actor: Actor, everything = false) {
     const course = await q.one<any>('select * from courses where id = $1 for update', [id]);
     if (!course) throw new NotFoundException();
+    if (everything) {
+      // Super Administrator clean-up (demo data): the course's programmes, registrations and assessments go with it.
+      // Certificates, finalised results and recorded payments are the official record and still block the delete.
+      for (const p of await q.query<{ id: string; code: string }>('select id, code from programmes where course_id = $1', [id])) await removeProgramme(q, p);
+      const certs = await q.one<{ n: number }>('select count(*)::int n from certificates where course_id = $1', [id]);
+      if (certs && certs.n) throw new ConflictException(`${course.code} cannot be deleted because of ${plural(certs.n, 'certificate')}. Certificates are the official record and are never deleted. Archive the course instead.`);
+      await q.query('delete from exam_attempts where assessment_id in (select id from assessments where course_id = $1)', [id]);
+      await q.query('delete from assessments where course_id = $1', [id]);
+    }
     const n = await q.one<{ programmes: number; certificates: number; assessments: number }>(
       `select (select count(*) from programmes where course_id = $1)::int as programmes,
               (select count(*) from certificates where course_id = $1)::int as certificates,
@@ -122,17 +132,20 @@ export class CoursesController {
 
   @Delete('courses/:id')
   @Require('courses:write')
-  async deleteCourse(@Param('id') id: string, @ActorCtx() actor: Actor) {
+  async deleteCourse(@CurrentUser() u: AuthUser, @Param('id') id: string, @Query() query: unknown, @ActorCtx() actor: Actor) {
     parse(uuid, id);
-    const c = await this.db.tx((q) => this.deleteCourseIn(q, id, actor));
+    const { with_records } = parse(z.object({ with_records: z.enum(['true']).optional() }), query);
+    if (with_records && u.role !== 'super_admin') throw new ForbiddenException('Only a Super Administrator can delete a course together with its programmes and assessments.');
+    const c = await this.db.tx((q) => this.deleteCourseIn(q, id, actor, !!with_records));
     return { ok: true, deleted: c.code };
   }
 
   @Delete('course-categories/:id')
   @Require('courses:write')
-  async deleteCategory(@Param('id') id: string, @Query() query: unknown, @ActorCtx() actor: Actor) {
+  async deleteCategory(@CurrentUser() u: AuthUser, @Param('id') id: string, @Query() query: unknown, @ActorCtx() actor: Actor) {
     parse(uuid, id);
     const { with_courses } = parse(z.object({ with_courses: z.enum(['true']).optional() }), query);
+    const everything = u.role === 'super_admin';
     return this.db.tx(async (q) => {
       const cat = await q.one<any>('select * from course_categories where id = $1 for update', [id]);
       if (!cat) throw new NotFoundException();
@@ -142,10 +155,10 @@ export class CoursesController {
       }
       const blocked: string[] = [];
       for (const c of courses) {
-        try { await q.query('savepoint c'); await this.deleteCourseIn(q, c.id, actor); await q.query('release savepoint c'); }
+        try { await q.query('savepoint c'); await this.deleteCourseIn(q, c.id, actor, everything); await q.query('release savepoint c'); }
         catch (e) { await q.query('rollback to savepoint c'); if (e instanceof ConflictException) blocked.push(c.code); else throw e; }
       }
-      if (blocked.length) throw new ConflictException(`Nothing was deleted. These courses have programmes, certificates or assessments and can only be archived: ${blocked.join(', ')}.`);
+      if (blocked.length) throw new ConflictException(`Nothing was deleted. These courses have certificates or other official records and can only be archived: ${blocked.join(', ')}.`);
       await q.query('delete from course_categories where id = $1', [id]);
       await this.audit.log(q, actor, 'course_category.delete', 'course_category', id, { ...cat, courses_deleted: courses.map((c) => c.code) }, null);
       return { ok: true, deleted: cat.code, courses_deleted: courses.length };
