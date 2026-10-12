@@ -11,7 +11,7 @@ import { useToast } from '@/components/toast';
 import { Badge, Card, ConfirmModal, ErrorNote, KV, Loading, PageHead, Tabs } from '@/components/ui';
 import { date, label, money } from '@/lib/format';
 import { useCategoryOptions, useCourseOptions, useInstructorOptions } from '@/lib/options';
-import { courseFields, SHOW_COURSE_FEE } from '@/lib/course-fields';
+import { courseFields } from '@/lib/course-fields';
 
 const KINDS = ['video', 'pdf', 'presentation', 'document', 'audio', 'image', 'scorm', 'link'].map((v) => ({ value: v, label: label(v) }));
 
@@ -43,7 +43,7 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
       <Tabs value={tab} onChange={setTab} tabs={[{ key: 'overview', label: 'Overview' }, { key: 'content', label: 'Modules and materials', count: c.modules.length }, { key: 'requirements', label: 'Requirements' }, { key: 'programmes', label: 'Programmes' }]} />
       {tab === 'overview' && (
         <div className="grid c2">
-          <Card title="Rules"><KV items={[['Duration', `${c.duration_hours} hours`], ['Delivery', label(c.delivery_method)], ...(is('instructor') || !SHOW_COURSE_FEE ? [] : [['Fee', money(c.fee, c.currency)] as [string, any]]), ['Capacity', c.capacity], ['Pass mark', `${c.pass_mark}%`], ['Minimum attendance', `${c.min_attendance_pct}%`], ['Certificate valid', c.validity_months ? `${c.validity_months} months` : 'No expiry']]} /></Card>
+          <Card title="Rules"><KV items={[['Duration', `${c.duration_hours} hours`], ['Delivery', label(c.delivery_method)], ...(is('instructor') || !me.show_course_fee ? [] : [['Fee', money(c.fee, c.currency)] as [string, any]]), ['Capacity', c.capacity], ['Pass mark', `${c.pass_mark}%`], ['Minimum attendance', `${c.min_attendance_pct}%`], ['Certificate valid', c.validity_months ? `${c.validity_months} months` : 'No expiry']]} /></Card>
           {/* Recognition (approving body, reference, expiry) is left out for now. The data fields still exist and can be shown again. */}
           {c.target_audience && <Card title="Audience"><p>{c.target_audience}</p></Card>}
           {c.description && <Card title="About this course"><p>{c.description}</p></Card>}{c.objectives && <Card title="Objectives"><p style={{ whiteSpace: 'pre-wrap' }}>{c.objectives}</p></Card>}
@@ -74,7 +74,7 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
       {tab === 'programmes' && <DataList path="/programmes" extra={{ course_id: id }} columns={progs} search={false} empty={{ title: 'No programmes yet', hint: 'Programmes are scheduled runs of this course.' }} />}
 
       {removeModule && <ConfirmModal title={`Remove ${removeModule.title}?`} message="The module and its materials are removed from the course. Trainee progress on them is lost." danger confirmLabel="Remove" onClose={() => setRemoveModule(null)} onConfirm={async () => { await api.del(`/modules/${removeModule.id}`); toast('Module removed'); course.reload(); }} />}
-      {edit && <FormModal title="Edit course" size="wide" fields={courseFields(cats)} initial={c} onClose={() => setEdit(false)} onSubmit={async (v) => { await api.patch(`/courses/${id}`, v); toast('Saved'); course.reload(); }} />}
+      {edit && <FormModal title="Edit course" size="wide" fields={courseFields(cats, !is('instructor') && !!me.show_course_fee)} initial={c} onClose={() => setEdit(false)} onSubmit={async (v) => { await api.patch(`/courses/${id}`, v); toast('Saved'); course.reload(); }} />}
       {addModule && <FormModal title="Add module" size="narrow" fields={[{ name: 'title', label: 'Title', required: true, full: true }, { name: 'description', label: 'Description', type: 'textarea', full: true }]} onClose={() => setAddModule(false)} onSubmit={async (v) => { await api.post(`/courses/${id}/modules`, { ...v, position: c.modules.length }); course.reload(); }} />}
       {addMaterial && <AddMaterialModal moduleId={addMaterial} onClose={() => setAddMaterial(null)} onDone={() => course.reload()} />}
       {prereq && <FormModal title="Prerequisites" size="wide" fields={[]} onClose={() => setPrereq(null)} onSubmit={async () => { await api.put(`/courses/${id}/prerequisites`, { ids: prereq }); toast('Saved'); course.reload(); }}><ChecklistPicker items={allCourses.filter((o) => o.value !== id)} selected={prereq} onChange={setPrereq} placeholder="Search courses" /></FormModal>}

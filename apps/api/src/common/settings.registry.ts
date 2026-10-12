@@ -78,6 +78,14 @@ export const SETTINGS_PAGES: PageDef[] = [
       help: 'Turn this off if trainees never pay HAAB directly, for example when their employer is billed. They then see no invoices, and the platform refuses requests for them.' }],
   },
   {
+    key: 'course_fees', title: 'Course Fees', status: 'active', writeRoles: SUPER,
+    description: 'Whether the fee of each course is shown in the course catalogue. Fees are always kept in the system.',
+    schema: z.object({ show_course_fee: z.boolean() }),
+    defaults: { show_course_fee: false },
+    fields: [{ name: 'show_course_fee', label: 'Show course fees in the course catalogue', type: 'boolean',
+      help: 'Off while client organisations carry the cost of their trainees. Turn it on when HAAB wants fees visible on the course list, the course page and the course form. Instructors never see fees whatever this is set to.' }],
+  },
+  {
     key: 'period', title: 'Training Period', status: 'active', writeRoles: SUPER,
     description: 'When the reporting year starts. Dashboards and reports default to the current period.',
     schema: z.object({ start_month: z.number().int().min(1).max(12) }),

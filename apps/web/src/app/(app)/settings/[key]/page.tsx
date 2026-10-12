@@ -3,6 +3,7 @@ import { use, useEffect, useState } from 'react';
 import { api, ApiError, useApi } from '@/lib/api';
 import { Field, FieldDef } from '@/components/form';
 import { useToast } from '@/components/toast';
+import { useAuth } from '@/lib/auth';
 import { Badge, Card, ErrorNote, Loading } from '@/components/ui';
 
 interface PageData {
@@ -16,6 +17,7 @@ export default function SettingsPage({ params }: { params: Promise<{ key: string
   const { key } = use(params);
   const { data, error, loading, reload } = useApi<PageData>(`/settings/pages/${key}`);
   const toast = useToast();
+  const { refresh } = useAuth();
   const [values, setValues] = useState<Record<string, any>>({});
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -32,7 +34,7 @@ export default function SettingsPage({ params }: { params: Promise<{ key: string
       else if (f.type === 'boolean') body[f.name] = !!v;
       else body[f.name] = v ?? '';
     }
-    try { await api.put(`/settings/pages/${key}`, body); toast('Saved'); reload(); }
+    try { await api.put(`/settings/pages/${key}`, body); toast('Saved'); reload(); void refresh(); }
     catch (err) {
       const ae = err as ApiError; const fe: Record<string, string> = {};
       for (const i of ae.issues) fe[i.path.split('.')[0]] = i.message;

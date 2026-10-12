@@ -153,6 +153,7 @@ export class AuthController {
       mfa_enrolled: user.mfaEnrolled,
       mfa_verified: user.mfa,
       mfa_available: this.env.AUTH_MODE === 'supabase',
+      show_course_fee: (await this.settings.get<{ show_course_fee: boolean }>('course_fees')).show_course_fee,
       show_finance: user.role !== 'trainee' || (await this.settings.get<{ show_finance: boolean }>('trainee_access')).show_finance
         || (!user.organizationId && (await this.settings.get<{ enabled: boolean }>('public_access')).enabled),
     };

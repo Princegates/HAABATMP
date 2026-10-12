@@ -1195,3 +1195,14 @@ test('35. emails to a registered person end with the sign-in link; the in-app co
   const app = await db.query(`select body from notifications where user_id = $1 and kind = 'enrollment.confirmed' and channel = 'in_app' order by created_at desc limit 1`, [S.t3]);
   assert.doesNotMatch(app.rows[0].body, /Sign in:/);
 });
+
+test('36. the Super Admin chooses whether course fees are shown; fees are kept either way', async () => {
+  const sa = api(S.sa); const a1 = api(S.tok_a1);
+  assert.equal(ok(await sa.get('/auth/me')).show_course_fee, false, 'hidden by default');
+  refused(await a1.put('/settings/pages/course_fees', { show_course_fee: true }), 403, 'only the Super Admin');
+  ok(await sa.put('/settings/pages/course_fees', { show_course_fee: true }));
+  assert.equal(ok(await a1.get('/auth/me')).show_course_fee, true, 'everyone is told');
+  assert.equal(ok(await sa.get(`/courses/${S.course.id}`)).fee !== undefined, true, 'the fee is still stored and served to staff');
+  ok(await sa.put('/settings/pages/course_fees', { show_course_fee: false }));
+  assert.equal(ok(await a1.get('/auth/me')).show_course_fee, false);
+});

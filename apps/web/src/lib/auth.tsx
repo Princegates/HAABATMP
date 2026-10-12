@@ -5,11 +5,11 @@ import { api, ApiError } from './api';
 
 export interface Me {
   id: string; email: string; full_name: string; role: Role; organization: { id: string; name: string } | null;
-  permissions: string[]; mfa_required: boolean; mfa_required_by_policy: boolean; mfa_enrolled: boolean; mfa_verified: boolean; mfa_available: boolean; show_finance: boolean; menu?: { hide: string[]; show: string[] };
+  permissions: string[]; mfa_required: boolean; mfa_required_by_policy: boolean; mfa_enrolled: boolean; mfa_verified: boolean; mfa_available: boolean; show_finance: boolean; show_course_fee?: boolean; menu?: { hide: string[]; show: string[] };
 }
 export type Role = 'super_admin' | 'training_admin' | 'instructor' | 'trainee' | 'org_admin' | 'finance_officer' | 'auditor';
 
-interface AuthCtx { me: Me; can: (...perms: string[]) => boolean; is: (...roles: Role[]) => boolean; signOut: () => Promise<void> }
+interface AuthCtx { me: Me; can: (...perms: string[]) => boolean; is: (...roles: Role[]) => boolean; signOut: () => Promise<void>; refresh: () => Promise<void> }
 const Ctx = createContext<AuthCtx | null>(null);
 export const useAuth = () => { const c = useContext(Ctx); if (!c) throw new Error('useAuth outside AuthProvider'); return c; };
 
@@ -44,11 +44,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = '/login';
   }, []);
 
+  /** Re-reads who is signed in and what they may see, after a setting that changes it was saved. */
+  const refresh = useCallback(async () => { try { setMe(await api.get<Me>('/auth/me')); } catch { /* keep what is shown */ } }, []);
+
   const value = useMemo<AuthCtx | null>(() => me && {
-    me, signOut,
+    me, signOut, refresh,
     can: (...perms) => perms.some((p) => me.permissions.includes(p)),
     is: (...roles) => roles.includes(me.role),
-  }, [me, signOut]);
+  }, [me, signOut, refresh]);
 
   if (failed) return <div className="verify"><div className="alert danger"><b>The platform could not be reached.</b><div className="muted">{failed}</div></div></div>;
   if (!value) return <div className="verify"><span className="muted">Loading…</span></div>;
