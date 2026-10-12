@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ENV, Env } from '../config';
 import { Db, Q } from './db.service';
 import { Mailer } from './mailer.service';
 
@@ -15,7 +16,7 @@ export interface NotifyInput {
 @Injectable()
 export class NotifyService {
   private readonly log = new Logger(NotifyService.name);
-  constructor(private readonly db: Db, private readonly mailer: Mailer) {}
+  constructor(private readonly db: Db, private readonly mailer: Mailer, @Inject(ENV) private readonly env: Env) {}
 
   /** Queues an in-app notice and an email. Delivery happens in processOutbox(). */
   async notify(input: NotifyInput, q?: Q): Promise<void> {
@@ -33,10 +34,12 @@ export class NotifyService {
       );
     }
     if (email) {
+      // emails to a registered person end with the sign-in link, so every notice is one tap from the platform
+      const mailBody = input.userId ? `${input.body}\n\nSign in: ${this.env.PUBLIC_WEB_URL.replace(/\/+$/, '')}/login` : input.body;
       await runner.query(
         `insert into notifications (user_id, to_email, channel, kind, subject, body, status, dedupe_key)
          values ($1,$2,'email',$3,$4,$5,'pending',$6) on conflict do nothing`,
-        [input.userId ?? null, email, input.kind, input.subject, input.body, input.dedupeKey ? `mail:${input.dedupeKey}` : null],
+        [input.userId ?? null, email, input.kind, input.subject, mailBody, input.dedupeKey ? `mail:${input.dedupeKey}` : null],
       );
     }
   }

@@ -1183,3 +1183,15 @@ test('34. programmes and courses are grouped by client', async () => {
   refused(await api(S.tok_T1).get('/programmes/by-client'), 403, 'trainees');
   refused(await api(S.tok_instr).get('/programmes/by-client'), 403, 'instructors');
 });
+
+test('35. emails to a registered person end with the sign-in link; the in-app copy stays clean', async () => {
+  const a1 = api(S.tok_a1);
+  const prog = ok(await a1.post('/programmes', { course_id: S.course.id, start_date: day(100), end_date: day(101), capacity: 5, fee: 0 }));
+  ok(await a1.post(`/programmes/${prog.id}/status`, { status: 'open_for_registration' }));
+  const e = ok(await a1.post(`/programmes/${prog.id}/enrol`, { trainee_ids: [S.t3] }));
+  ok(await a1.post(`/enrollments/${e.enrolled[0].id}/confirm`, { override_reason: 'test run override' }));
+  const mail = await db.query(`select body from notifications where user_id = $1 and kind = 'enrollment.confirmed' and channel = 'email' order by created_at desc limit 1`, [S.t3]);
+  assert.match(mail.rows[0].body, /\n\nSign in: https?:\/\/[^\s]+\/login$/);
+  const app = await db.query(`select body from notifications where user_id = $1 and kind = 'enrollment.confirmed' and channel = 'in_app' order by created_at desc limit 1`, [S.t3]);
+  assert.doesNotMatch(app.rows[0].body, /Sign in:/);
+});
