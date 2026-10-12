@@ -44,7 +44,8 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
       {tab === 'overview' && (
         <div className="grid c2">
           <Card title="Rules"><KV items={[['Duration', `${c.duration_hours} hours`], ['Delivery', label(c.delivery_method)], ...(is('instructor') ? [] : [['Fee', money(c.fee, c.currency)] as [string, any]]), ['Capacity', c.capacity], ['Pass mark', `${c.pass_mark}%`], ['Minimum attendance', `${c.min_attendance_pct}%`], ['Certificate valid', c.validity_months ? `${c.validity_months} months` : 'No expiry']]} /></Card>
-          <Card title="Recognition"><KV items={[['Approved by', c.approving_body || 'Not recorded'], ['Reference', c.approval_reference], ['Approval expires', c.approval_expiry && date(c.approval_expiry)], ['Audience', c.target_audience]]} />{!c.approving_body && <div className="alert warn" style={{ marginTop: 12 }}>No approving body is recorded. Add one if this course is accredited or aligned to a standard.</div>}</Card>
+          {/* Recognition (approving body, reference, expiry) is left out for now. The data fields still exist and can be shown again. */}
+          {c.target_audience && <Card title="Audience"><p>{c.target_audience}</p></Card>}
           {c.description && <Card title="About this course"><p>{c.description}</p></Card>}{c.objectives && <Card title="Objectives"><p style={{ whiteSpace: 'pre-wrap' }}>{c.objectives}</p></Card>}
         </div>
       )}

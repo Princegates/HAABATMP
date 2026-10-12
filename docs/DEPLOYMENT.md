@@ -98,7 +98,7 @@ screen, and in navy on certificates, invoices and receipts, with no setting need
 - [ ] Sign in as the super administrator and confirm two-step sign-in works: turn it on under My profile, sign out and in again, then turn it off.
 - [ ] **System setting > General Setting**: organisation name, address, registration number.
 - [ ] **Currency**, **Payment Methods** (bank and mobile money details printed on invoices), **Training Rules**.
-- [ ] Activate real courses with their true duration, fee, validity and approving body. The seeded courses are drafts with placeholders.
+- [ ] Activate real courses with their true duration, fee, and validity. The seeded courses are drafts with placeholders.
 - [ ] Create the other staff and the first client organisations; invite people.
 - [ ] Run a **backup restore drill** and record it under System setting > Backup Restore.
 - [ ] Run `select * from audit_verify();` (or press "Verify the chain" on the Audit screen). It must report no problems.
