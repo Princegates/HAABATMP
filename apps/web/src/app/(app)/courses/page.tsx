@@ -7,7 +7,7 @@ import { Column, DataList } from '@/components/datalist';
 import { FormModal } from '@/components/form';
 import { Badge, ConfirmModal, PageHead } from '@/components/ui';
 import { useToast } from '@/components/toast';
-import { courseFields } from '@/lib/course-fields';
+import { courseFields, SHOW_COURSE_FEE } from '@/lib/course-fields';
 import { money, label } from '@/lib/format';
 import { useCategoryOptions } from '@/lib/options';
 
@@ -23,7 +23,7 @@ function Inner() {
   useEffect(() => { if (params.get('new') && can('courses:write')) setForm(true); }, [params, can]);
   const columns: Column<any>[] = [
     { key: 'code', label: 'Code', render: (c) => <span className="mono">{c.code}</span>, href: (c) => `/courses/${c.id}` }, { key: 'title', label: 'Course', render: (c) => <b style={{ fontWeight: 600 }}>{c.title}</b> }, { key: 'category_name', label: 'Category' },
-    { key: 'duration_hours', label: 'Hours', num: true }, ...(is('instructor') ? [] : [{ key: 'fee', label: 'Fee', num: true, render: (c: any) => money(c.fee, c.currency) }]), { key: 'validity_months', label: 'Valid for', render: (c) => (c.validity_months ? `${c.validity_months} months` : 'No expiry') },
+    { key: 'duration_hours', label: 'Hours', num: true }, ...(is('instructor') || !SHOW_COURSE_FEE ? [] : [{ key: 'fee', label: 'Fee', num: true, render: (c: any) => money(c.fee, c.currency) }]), { key: 'validity_months', label: 'Valid for', render: (c) => (c.validity_months ? `${c.validity_months} months` : 'No expiry') },
     { key: 'status', label: 'Status', render: (c) => <Badge value={c.status} /> },
   ];
   return (

@@ -11,7 +11,7 @@ import { useToast } from '@/components/toast';
 import { Badge, Card, ConfirmModal, ErrorNote, KV, Loading, PageHead, Tabs } from '@/components/ui';
 import { date, label, money } from '@/lib/format';
 import { useCategoryOptions, useCourseOptions, useInstructorOptions } from '@/lib/options';
-import { courseFields } from '@/lib/course-fields';
+import { courseFields, SHOW_COURSE_FEE } from '@/lib/course-fields';
 
 const KINDS = ['video', 'pdf', 'presentation', 'document', 'audio', 'image', 'scorm', 'link'].map((v) => ({ value: v, label: label(v) }));
 
@@ -43,7 +43,7 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
       <Tabs value={tab} onChange={setTab} tabs={[{ key: 'overview', label: 'Overview' }, { key: 'content', label: 'Modules and materials', count: c.modules.length }, { key: 'requirements', label: 'Requirements' }, { key: 'programmes', label: 'Programmes' }]} />
       {tab === 'overview' && (
         <div className="grid c2">
-          <Card title="Rules"><KV items={[['Duration', `${c.duration_hours} hours`], ['Delivery', label(c.delivery_method)], ...(is('instructor') ? [] : [['Fee', money(c.fee, c.currency)] as [string, any]]), ['Capacity', c.capacity], ['Pass mark', `${c.pass_mark}%`], ['Minimum attendance', `${c.min_attendance_pct}%`], ['Certificate valid', c.validity_months ? `${c.validity_months} months` : 'No expiry']]} /></Card>
+          <Card title="Rules"><KV items={[['Duration', `${c.duration_hours} hours`], ['Delivery', label(c.delivery_method)], ...(is('instructor') || !SHOW_COURSE_FEE ? [] : [['Fee', money(c.fee, c.currency)] as [string, any]]), ['Capacity', c.capacity], ['Pass mark', `${c.pass_mark}%`], ['Minimum attendance', `${c.min_attendance_pct}%`], ['Certificate valid', c.validity_months ? `${c.validity_months} months` : 'No expiry']]} /></Card>
           {/* Recognition (approving body, reference, expiry) is left out for now. The data fields still exist and can be shown again. */}
           {c.target_audience && <Card title="Audience"><p>{c.target_audience}</p></Card>}
           {c.description && <Card title="About this course"><p>{c.description}</p></Card>}{c.objectives && <Card title="Objectives"><p style={{ whiteSpace: 'pre-wrap' }}>{c.objectives}</p></Card>}
