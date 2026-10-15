@@ -28,7 +28,7 @@ export default function ByClientPage() {
         {groups.map((g) => (
           <Card key={g.organization_id ?? 'none'} title={<>{g.organization_id ? <Link href={`/clients/${g.organization_id}`}>{g.name}</Link> : g.name}{g.type && <span className="muted" style={{ fontWeight: 400 }}> · {label(g.type)}</span>}</>}
             actions={<span className="muted">{g.courses.length} course{g.courses.length === 1 ? '' : 's'} · {g.programme_count} programme{g.programme_count === 1 ? '' : 's'}</span>} flush>
-            <table className="table"><tbody>
+            <table className="table" style={{ tableLayout: 'fixed' }}><colgroup><col style={{ width: '26%' }} /><col style={{ width: '30%' }} /><col style={{ width: '16%' }} /><col style={{ width: '12%' }} /><col style={{ width: '16%' }} /></colgroup><tbody>
               {g.courses.map((c: any) => (
                 <Fragment key={c.id}>
                   <tr><td colSpan={5} style={{ background: 'var(--surface-2, #f6f7f9)' }}><Link href={`/courses/${c.id}`}><span className="mono">{c.code}</span> · <b style={{ fontWeight: 600 }}>{c.title}</b></Link></td></tr>
