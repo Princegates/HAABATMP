@@ -1226,3 +1226,24 @@ test('37. rate limits count per signed-in person, so people sharing one address 
     process.env.PROXY_SHARED_SECRET = 'test-proxy-secret-0123456789abcdef';
   }
 });
+
+test('38. a class can sign in from one address; repeated wrong passwords still pause the one account', async () => {
+  process.env.THROTTLE_DISABLED = 'false';
+  try {
+    const sameRoom = { 'x-atmp-client-ip': '203.0.113.50', 'x-atmp-proxy-key': process.env.PROXY_SHARED_SECRET };
+    const attempt = async (mail, password, headers = sameRoom) => (await fetch(base + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ email: mail, password }) })).status;
+    const codes = [];
+    for (let i = 0; i < 20; i++) codes.push(await attempt(`student${i}.${run}@example.com`, 'wrong-password'));
+    assert.ok(codes.every((c) => c === 401), `twenty people on one address each get a normal refusal, got ${codes.join(',')}`);
+    const target = `lockme.${run}@example.com`;
+    const tries = [];
+    for (let i = 0; i < 7; i++) tries.push(await attempt(target, `guess${i}`));
+    assert.deepEqual(tries.slice(0, 5), [401, 401, 401, 401, 401]);
+    assert.deepEqual(tries.slice(5), [429, 429], 'after five wrong passwords that person is paused');
+    assert.equal(await attempt(email('super'), PASSWORD), 201, 'someone else on the same address signs in normally');
+    assert.ok((await db.query(`select 1 from audit_logs where action = 'auth.login_paused' and actor_email = $1`, [target])).rows.length === 1, 'the pause is audited once');
+  } finally {
+    process.env.THROTTLE_DISABLED = 'true';
+    process.env.PROXY_SHARED_SECRET = 'test-proxy-secret-0123456789abcdef';
+  }
+});

@@ -5,6 +5,7 @@ import { decideResult } from '../dist/common/result-rules.js';
 import { certStatus } from '../dist/common/certificates.service.js';
 import { SignJWT } from 'jose';
 import { TokenService } from '../dist/common/token.service.js';
+import { LoginAttempts } from '../dist/common/login-attempts.js';
 import { addMonths, csvEscape, daysBetween } from '../dist/common/util.js';
 
 const q = (type, answer, options = null, marks = 4) => ({ id: 'x', type, answer, options, marks });
@@ -143,4 +144,27 @@ test('tokens: Supabase tokens must come from this project (issuer) and be meant 
   await assert.rejects(warnOnly.verify(await sign('https://proj.supabase.co/auth/v1', 'anon')), /Invalid or expired/, 'warn mode still checks the audience');
   const custom = service({ SUPABASE_JWT_ISSUER: 'https://auth.haab.example/auth/v1' });
   assert.equal((await custom.verify(await sign('https://auth.haab.example/auth/v1'))).sub, 'u1', 'a custom auth domain can be configured');
+});
+
+test('sign-in attempts: five wrong passwords pause one person on one address, not their classmates; 30 pause the account', () => {
+  let t = 1_000_000;
+  const a = new LoginAttempts(() => t);
+  for (let i = 0; i < 4; i++) assert.equal(a.failed('Ann@Example.com', '1.1.1.1'), false);
+  assert.equal(a.retryAfter('ann@example.com', '1.1.1.1'), 0, 'four mistakes are fine');
+  assert.equal(a.failed('ann@example.com', '1.1.1.1'), true, 'the fifth pauses her');
+  assert.ok(a.retryAfter('ANN@example.com', '1.1.1.1') > 0, 'case does not matter');
+  assert.equal(a.retryAfter('bob@example.com', '1.1.1.1'), 0, 'a classmate on the same address is not affected');
+  assert.equal(a.retryAfter('ann@example.com', '2.2.2.2'), 0, 'nor is she on another address');
+  t += 10 * 60_000 + 1;
+  assert.equal(a.retryAfter('ann@example.com', '1.1.1.1'), 0, 'the pause ends after ten minutes');
+
+  const b = new LoginAttempts(() => t);
+  for (let i = 0; i < 29; i++) b.failed('victim@example.com', `10.0.0.${i}`);
+  assert.equal(b.retryAfter('victim@example.com', '9.9.9.9'), 0, 'a few guesses from many addresses do not pause the account');
+  b.failed('victim@example.com', '10.0.1.1');
+  assert.ok(b.retryAfter('victim@example.com', '9.9.9.9') > 0, 'thirty from anywhere pause it');
+  b.failed('carol@example.com', '3.3.3.3');
+  b.succeeded('carol@example.com', '3.3.3.3');
+  for (let i = 0; i < 4; i++) b.failed('carol@example.com', '3.3.3.3');
+  assert.equal(b.retryAfter('carol@example.com', '3.3.3.3'), 0, 'a correct password resets her count');
 });

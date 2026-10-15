@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, Post, Req, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpException, HttpStatus, Inject, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { z } from 'zod';
@@ -13,11 +13,14 @@ import { TokenService } from '../common/token.service';
 import { parse } from '../common/validation';
 import { timingSafeEqual } from 'node:crypto';
 import { UserCache } from '../common/user-cache';
+import { LoginAttempts } from '../common/login-attempts';
 
 const loginSchema = z.object({ email: z.string().email().max(200), password: z.string().min(1).max(200) });
 
 @Controller('auth')
 export class AuthController {
+  private readonly attempts = new LoginAttempts();
+
   constructor(
     private readonly db: Db,
     private readonly tokens: TokenService,
@@ -28,11 +31,19 @@ export class AuthController {
   ) {}
 
   @Public()
-  @Throttle({ default: { limit: 8, ttl: 60_000 } })
+  // Per address, generous enough for a whole class signing in together. Wrong passwords for one account are limited
+  // separately and much more tightly (see LoginAttempts).
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @Post('login')
   async login(@Body() body: unknown, @ActorCtx() actorBase: Actor) {
     const { email, password } = parse(loginSchema, body);
+    const limiting = this.env.NODE_ENV === 'production' || process.env.THROTTLE_DISABLED !== 'true';
+    if (limiting) {
+      const wait = this.attempts.retryAfter(email, actorBase.ip);
+      if (wait > 0) throw new HttpException({ statusCode: 429, message: `Too many incorrect attempts. Try again in ${Math.ceil(wait / 60)} minute(s), or reset your password.` }, HttpStatus.TOO_MANY_REQUESTS);
+    }
     const fail = async (why: string) => {
+      if (limiting && this.attempts.failed(email, actorBase.ip)) await this.audit.log(null, { ...actorBase, email }, 'auth.login_paused', 'user', null, null, { reason: 'too many incorrect attempts' });
       await this.audit.log(null, { ...actorBase, email }, 'auth.login_failed', 'user', null, null, { reason: why });
       throw new UnauthorizedException('Incorrect email or password');
     };
@@ -44,6 +55,7 @@ export class AuthController {
       const ok = a.length === b.length && timingSafeEqual(a, b);
       if (!user || !ok || user.status === 'suspended') return fail(!user ? 'unknown user' : user.status === 'suspended' ? 'suspended' : 'bad password');
       await this.db.query(`update users set last_login_at = now(), status = case when status='invited' then 'active' else status end where id = $1`, [user.id]);
+      this.attempts.succeeded(email, actorBase.ip);
       await this.audit.log(null, { id: user.id, email: user.email, role: user.role, ip: actorBase.ip }, 'auth.login', 'user', user.id);
       return { access_token: await this.tokens.signDev(user.id, user.email), expires_in: 8 * 3600, mfa_required: false };
     }
@@ -59,7 +71,8 @@ export class AuthController {
     const user = await this.db.one<any>('select * from users where auth_user_id = $1', [claims.sub]);
     if (!user || user.status === 'suspended') return fail('not provisioned or suspended');
     await this.db.query(`update users set last_login_at = now(), status = case when status = 'invited' then 'active' else status end where id = $1`, [user.id]);
-    await this.audit.log(null, { id: user.id, email: user.email, role: user.role, ip: actorBase.ip }, 'auth.login', 'user', user.id);
+    this.attempts.succeeded(email, actorBase.ip);
+      await this.audit.log(null, { id: user.id, email: user.email, role: user.role, ip: actorBase.ip }, 'auth.login', 'user', user.id);
     const factors: any[] = session.user?.factors ?? [];
     const verifiedFactor = factors.find((f: any) => f.status === 'verified');
     // Required when the Super Admin's list names the role, or the person turned it on for themselves.
