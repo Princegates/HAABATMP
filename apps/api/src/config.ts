@@ -24,6 +24,8 @@ const schema = z.object({
   SUPABASE_JWT_SECRET: z.string().optional(),
   // The `iss` Supabase puts in tokens. Defaults to <SUPABASE_URL>/auth/v1; set it only if you use a custom domain for Supabase Auth.
   SUPABASE_JWT_ISSUER: z.string().optional(),
+  // 'warn' logs a token from another issuer and lets it through; 'enforce' refuses it. Start with warn, check the logs, then enforce.
+  SUPABASE_JWT_ISSUER_MODE: z.enum(['warn', 'enforce']).default('warn'),
 
   // 32 bytes, base64. Encrypts identity numbers at rest.
   DATA_ENCRYPTION_KEY: z.string().optional(),

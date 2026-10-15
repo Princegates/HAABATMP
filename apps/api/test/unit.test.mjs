@@ -132,12 +132,15 @@ test('word import: problems are reported per question, not guessed', async () =>
 test('tokens: Supabase tokens must come from this project (issuer) and be meant for signed-in users (audience)', async () => {
   const secret = 'a-test-secret-that-is-long-enough-0123456789';
   const key = new TextEncoder().encode(secret);
-  const service = (extra = {}) => new TokenService({ AUTH_MODE: 'supabase', SUPABASE_URL: 'https://proj.supabase.co/', SUPABASE_JWT_SECRET: secret, ...extra });
+  const service = (extra = {}) => new TokenService({ AUTH_MODE: 'supabase', SUPABASE_JWT_ISSUER_MODE: 'enforce', SUPABASE_URL: 'https://proj.supabase.co/', SUPABASE_JWT_SECRET: secret, ...extra });
   const sign = (iss, aud = 'authenticated') => new SignJWT({}).setProtectedHeader({ alg: 'HS256' }).setSubject('u1').setIssuer(iss).setAudience(aud).setExpirationTime('5m').sign(key);
   const t = service();
   assert.equal((await t.verify(await sign('https://proj.supabase.co/auth/v1'))).sub, 'u1', 'this project is accepted, trailing slash or not');
   await assert.rejects(t.verify(await sign('https://other.supabase.co/auth/v1')), /Invalid or expired/, 'another project is refused');
   await assert.rejects(t.verify(await sign('https://proj.supabase.co/auth/v1', 'anon')), /Invalid or expired/, 'wrong audience is refused');
+  const warnOnly = service({ SUPABASE_JWT_ISSUER_MODE: 'warn' });
+  assert.equal((await warnOnly.verify(await sign('https://other.supabase.co/auth/v1'))).sub, 'u1', 'warn mode lets a different issuer through (and logs it)');
+  await assert.rejects(warnOnly.verify(await sign('https://proj.supabase.co/auth/v1', 'anon')), /Invalid or expired/, 'warn mode still checks the audience');
   const custom = service({ SUPABASE_JWT_ISSUER: 'https://auth.haab.example/auth/v1' });
   assert.equal((await custom.verify(await sign('https://auth.haab.example/auth/v1'))).sub, 'u1', 'a custom auth domain can be configured');
 });

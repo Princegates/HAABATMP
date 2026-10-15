@@ -1,4 +1,4 @@
-import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { createRemoteJWKSet, jwtVerify, JWTPayload, SignJWT } from 'jose';
 import { ENV, Env } from '../config';
 
@@ -26,16 +26,30 @@ export class TokenService {
     }
   }
 
+  private lastIssuerWarning = 0;
+  private readonly log = new Logger(TokenService.name);
+
+  /** Once a minute at most: the expected and the received issuer, so a mismatch is easy to read in the host's logs. */
+  private warnIssuer(received: string) {
+    if (Date.now() - this.lastIssuerWarning < 60_000) return;
+    this.lastIssuerWarning = Date.now();
+    this.log.warn(`Token issuer is "${received}" but "${this.supabaseIssuer}" is expected. Set SUPABASE_JWT_ISSUER to the first value, then SUPABASE_JWT_ISSUER_MODE=enforce.`);
+  }
+
   async verify(token: string): Promise<Claims> {
     try {
       if (this.env.AUTH_MODE === 'dev') {
         const { payload } = await jwtVerify(token, this.devKey, { issuer: DEV_ISSUER, algorithms: ['HS256'] });
         return payload as Claims;
       }
-      const opts = { audience: 'authenticated', issuer: this.supabaseIssuer };
+      const opts = { audience: 'authenticated' };
       const { payload } = this.supabaseSecret
         ? await jwtVerify(token, this.supabaseSecret, { ...opts, algorithms: ['HS256'] })
         : await jwtVerify(token, this.jwks!, opts);
+      if (payload.iss !== this.supabaseIssuer) {
+        if (this.env.SUPABASE_JWT_ISSUER_MODE === 'enforce') throw new Error('unexpected issuer');
+        this.warnIssuer(String(payload.iss));
+      }
       return payload as Claims;
     } catch {
       throw new UnauthorizedException('Invalid or expired session');

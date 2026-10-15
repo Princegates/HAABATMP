@@ -32,7 +32,7 @@ Result: **no critical findings**. Authorisation, SQL handling (every value is a 
 
 | Change | Why |
 |---|---|
-| Supabase tokens must carry this project's issuer (`<SUPABASE_URL>/auth/v1`, or `SUPABASE_JWT_ISSUER` for a custom auth domain). | A token from another project that shares the signing method is no longer accepted. |
+| Supabase tokens are checked against this project's issuer (`<SUPABASE_URL>/auth/v1`, or `SUPABASE_JWT_ISSUER` for a custom auth domain). It starts in `warn` mode (logs a mismatch, lets the request through); set `SUPABASE_JWT_ISSUER_MODE=enforce` once the logs show no warnings. | In enforce mode a token from another project that shares the signing method is refused. |
 | Rate limits count per signed-in person; unauthenticated requests are still counted by address. | People sharing one address (a classroom) no longer lock each other out of an exam. A made-up token falls back to the address. |
 | The signed-in person is remembered for 10 seconds, and cleared at once on any change to a user (role, status, two-step sign-in, deletion). | Removes a database read from every request. On a second server instance a suspension takes up to 10 seconds to be seen. |
 | Dependabot, CodeQL and a committed-secret check in CI. | Out-of-date packages, code-level bugs and leaked keys are caught before release. |
