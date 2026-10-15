@@ -12,6 +12,7 @@ import { permissionsFor } from '../common/permissions';
 import { TokenService } from '../common/token.service';
 import { parse } from '../common/validation';
 import { timingSafeEqual } from 'node:crypto';
+import { UserCache } from '../common/user-cache';
 
 const loginSchema = z.object({ email: z.string().email().max(200), password: z.string().min(1).max(200) });
 
@@ -22,6 +23,7 @@ export class AuthController {
     private readonly tokens: TokenService,
     private readonly audit: AuditService,
     private readonly settings: SettingsService,
+    private readonly userCache: UserCache,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -205,6 +207,7 @@ export class AuthController {
     }
     const s: any = await vr.json();
     await this.db.query('update users set mfa_enrolled = true where id = $1 and not mfa_enrolled', [user.id]);
+    this.userCache.clear();
     await this.audit.log(null, actor, 'auth.mfa_verified', 'user', user.id);
     return { access_token: s.access_token, refresh_token: s.refresh_token, expires_in: s.expires_in };
   }
@@ -224,6 +227,7 @@ export class AuthController {
       if (!r.ok) throw new BadRequestException('Could not remove the authenticator');
     }
     await this.db.query('update users set mfa_enrolled = false where id = $1', [user.id]);
+    this.userCache.clear();
     await this.audit.log(null, actor, 'auth.mfa_disabled', 'user', user.id);
     return { ok: true };
   }

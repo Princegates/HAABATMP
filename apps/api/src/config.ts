@@ -22,6 +22,8 @@ const schema = z.object({
   SUPABASE_ANON_KEY: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   SUPABASE_JWT_SECRET: z.string().optional(),
+  // The `iss` Supabase puts in tokens. Defaults to <SUPABASE_URL>/auth/v1; set it only if you use a custom domain for Supabase Auth.
+  SUPABASE_JWT_ISSUER: z.string().optional(),
 
   // 32 bytes, base64. Encrypts identity numbers at rest.
   DATA_ENCRYPTION_KEY: z.string().optional(),

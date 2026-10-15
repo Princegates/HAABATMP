@@ -13,8 +13,9 @@ import { NumberingService } from './numbering.service';
 import { SettingsService } from './settings.service';
 import { MalwareScanner, StorageService } from './storage.service';
 import { TokenService } from './token.service';
+import { UserCache } from './user-cache';
 
-const shared = [Db, AuditService, CryptoService, Mailer, NotifyService, SettingsService, StorageService, MalwareScanner, TokenService, AuthGuard, NumberingService, InvoicingService, CertificatesService, IntegrationsService];
+const shared = [Db, AuditService, CryptoService, Mailer, NotifyService, SettingsService, StorageService, MalwareScanner, TokenService, AuthGuard, NumberingService, InvoicingService, CertificatesService, IntegrationsService, UserCache];
 
 @Global()
 @Module({

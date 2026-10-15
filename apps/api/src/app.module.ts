@@ -4,6 +4,8 @@ import { FeeHidingInterceptor } from './common/fee-hiding.interceptor';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthGuard } from './common/auth.guard';
 import { CoreModule } from './common/core.module';
+import { rateLimitTracker } from './common/rate-limit-tracker';
+import { TokenService } from './common/token.service';
 import { AssessmentsModule } from './modules/assessments.module';
 import { AttendanceModule } from './modules/attendance.module';
 import { AuditModule } from './modules/audit.module';
@@ -26,10 +28,14 @@ import { WorkflowModule } from './modules/workflow.module';
 
 @Module({
   imports: [
-    ThrottlerModule.forRoot({
-      throttlers: [{ name: 'default', ttl: 60_000, limit: 300 }],
-      // Test runs can switch the limiter off. It is ignored in production, which also refuses to boot with it set (config.ts).
-      skipIf: () => process.env.NODE_ENV !== 'production' && process.env.THROTTLE_DISABLED === 'true',
+    ThrottlerModule.forRootAsync({
+      inject: [TokenService],
+      useFactory: (tokens: TokenService) => ({
+        throttlers: [{ name: 'default', ttl: 60_000, limit: 300 }],
+        getTracker: rateLimitTracker(tokens),
+        // Test runs can switch the limiter off. It is ignored in production, which also refuses to boot with it set (config.ts).
+        skipIf: () => process.env.NODE_ENV !== 'production' && process.env.THROTTLE_DISABLED === 'true',
+      }),
     }),
     CoreModule, AuthModule, UsersModule, OrganizationsModule, CoursesModule, ProgrammesModule, EnrollmentsModule, AttendanceModule,
     AssessmentsModule, ResultsModule, CertificatesModule, FinanceModule, DocumentsModule, ComplianceModule, ReportsModule,

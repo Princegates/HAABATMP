@@ -28,6 +28,15 @@ Result: **no critical findings**. Authorisation, SQL handling (every value is a 
 | 16 | Low | Money accepted more than two decimals (stored amounts could differ from totals); database constraint names appeared in errors; registration names could carry links into staff emails. | Two-decimal limit; constraint names removed; names collapsed to one plain line without links. |
 | 17 | Low | Exam answers had no size limit; zero-value marks caused a server error; local Postgres published on all interfaces; CI token had write scope. | Answer size cap; minimum mark 0.01; Postgres bound to localhost; read-only CI token. |
 
+## Hardening round 2 (low-risk)
+
+| Change | Why |
+|---|---|
+| Supabase tokens must carry this project's issuer (`<SUPABASE_URL>/auth/v1`, or `SUPABASE_JWT_ISSUER` for a custom auth domain). | A token from another project that shares the signing method is no longer accepted. |
+| Rate limits count per signed-in person; unauthenticated requests are still counted by address. | People sharing one address (a classroom) no longer lock each other out of an exam. A made-up token falls back to the address. |
+| The signed-in person is remembered for 10 seconds, and cleared at once on any change to a user (role, status, two-step sign-in, deletion). | Removes a database read from every request. On a second server instance a suspension takes up to 10 seconds to be seen. |
+| Dependabot, CodeQL and a committed-secret check in CI. | Out-of-date packages, code-level bugs and leaked keys are caught before release. |
+
 ## Accepted or open (decide and schedule)
 
 | Item | Why it is open | Recommendation |

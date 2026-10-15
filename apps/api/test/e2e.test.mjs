@@ -542,6 +542,7 @@ test('14. authentication hardening', async () => {
   refused(await api(S.tok_T4).get('/dashboard'), 403, 'a suspended account is locked out at once, even with a valid token');
   refused(await http('POST', '/auth/login', null, { email: email('trainee4'), password: PASSWORD }), 401, 'and cannot sign in');
   ok(await api(S.sa).post(`/users/${S.t4}/reactivate`));
+  ok(await api(S.tok_T4).get('/dashboard'), 'and is let back in at once on reactivation (the sign-in cache is cleared on every change)');
   refused(await api(S.sa).post(`/users/${(await db.query(`select id from users where email = $1`, [email('super')])).rows[0].id}/suspend`, { reason: 'Cannot suspend self' }), 400, 'cannot suspend yourself');
   const res = await fetch(base + '/health'); assert.equal(res.headers.get('x-content-type-options'), 'nosniff', 'security headers present');
   assert.equal((await res.json()).status, 'ok');
@@ -1205,4 +1206,23 @@ test('36. the Super Admin chooses whether course fees are shown; fees are kept e
   assert.equal(ok(await sa.get(`/courses/${S.course.id}`)).fee !== undefined, true, 'the fee is still stored and served to staff');
   ok(await sa.put('/settings/pages/course_fees', { show_course_fee: false }));
   assert.equal(ok(await a1.get('/auth/me')).show_course_fee, false);
+});
+
+test('37. rate limits count per signed-in person, so people sharing one address do not lock each other out', async () => {
+  process.env.THROTTLE_DISABLED = 'false';
+  try {
+    // every request here comes from the same address; /auth/mfa/enroll allows 10 per minute
+    const a = api(S.tok_a1), b = api(S.tok_T1);
+    const first = [];
+    for (let i = 0; i < 13; i++) first.push((await a.post('/auth/mfa/enroll')).status);
+    assert.ok(first.includes(429), `the first person is limited after 10 calls, got ${first.join(',')}`);
+    assert.notEqual((await b.post('/auth/mfa/enroll')).status, 429, 'a second person on the same address still has their own allowance');
+    // a made-up token cannot pick a fresh bucket: it is counted by address, so it never gets more than an address would
+    const bogus = [];
+    for (let i = 0; i < 13; i++) bogus.push((await http('POST', '/auth/mfa/enroll', 'not.a.token')).status);
+    assert.ok(bogus.every((c) => c === 401 || c === 429), 'an invalid token is refused');
+  } finally {
+    process.env.THROTTLE_DISABLED = 'true';
+    process.env.PROXY_SHARED_SECRET = 'test-proxy-secret-0123456789abcdef';
+  }
 });

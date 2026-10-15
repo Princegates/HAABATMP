@@ -14,10 +14,13 @@ export class TokenService {
   private readonly devKey: Uint8Array;
   private readonly supabaseSecret?: Uint8Array;
   private readonly jwks?: ReturnType<typeof createRemoteJWKSet>;
+  private readonly supabaseIssuer?: string;
 
   constructor(@Inject(ENV) private readonly env: Env) {
     this.devKey = new TextEncoder().encode(env.DEV_JWT_SECRET);
     if (env.AUTH_MODE === 'supabase') {
+      // Supabase signs tokens with this issuer. Only tokens it issued for this project are accepted.
+      this.supabaseIssuer = env.SUPABASE_JWT_ISSUER ?? `${(env.SUPABASE_URL ?? '').replace(/\/+$/, '')}/auth/v1`;
       if (env.SUPABASE_JWT_SECRET) this.supabaseSecret = new TextEncoder().encode(env.SUPABASE_JWT_SECRET);
       else this.jwks = createRemoteJWKSet(new URL(`${env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`));
     }
@@ -29,7 +32,7 @@ export class TokenService {
         const { payload } = await jwtVerify(token, this.devKey, { issuer: DEV_ISSUER, algorithms: ['HS256'] });
         return payload as Claims;
       }
-      const opts = { audience: 'authenticated' };
+      const opts = { audience: 'authenticated', issuer: this.supabaseIssuer };
       const { payload } = this.supabaseSecret
         ? await jwtVerify(token, this.supabaseSecret, { ...opts, algorithms: ['HS256'] })
         : await jwtVerify(token, this.jwks!, opts);

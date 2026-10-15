@@ -7,6 +7,7 @@ import { IS_PUBLIC, NO_MFA, PERMS } from './decorators';
 import { Permission, permissionsFor, Role } from './permissions';
 import { SettingsService } from './settings.service';
 import { TokenService } from './token.service';
+import { UserCache } from './user-cache';
 import { AuthUser } from './auth.types';
 
 interface UserRow {
@@ -20,6 +21,7 @@ export class AuthGuard implements CanActivate {
     private readonly db: Db,
     private readonly tokens: TokenService,
     private readonly settings: SettingsService,
+    private readonly userCache: UserCache<UserRow>,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -31,7 +33,8 @@ export class AuthGuard implements CanActivate {
     const req = ctx.switchToHttp().getRequest<Request>();
     const header = req.headers.authorization;
     if (!header?.startsWith('Bearer ')) throw new UnauthorizedException('Sign in required');
-    const claims = await this.tokens.verify(header.slice(7));
+    // the rate limiter may already have checked this token for this request
+    const claims = (req as any).claims ?? (await this.tokens.verify(header.slice(7)));
 
     const user = await this.resolveUser(claims.sub!, claims.email);
     const mfa = this.env.AUTH_MODE === 'dev' ? true : claims.aal === 'aal2';
@@ -56,6 +59,11 @@ export class AuthGuard implements CanActivate {
   }
 
   private async resolveUser(sub: string, email?: string): Promise<UserRow> {
+    const cached = this.userCache.get(sub);
+    if (cached) {
+      if (cached.status === 'suspended') throw new ForbiddenException('This account is suspended');
+      return cached;
+    }
     let user: UserRow | null;
     if (this.env.AUTH_MODE === 'dev') {
       user = await this.db.one<UserRow>('select * from users where id = $1', [sub]);
@@ -65,6 +73,7 @@ export class AuthGuard implements CanActivate {
       user = await this.db.one<UserRow>('select * from users where auth_user_id = $1', [sub]);
     }
     if (!user) throw new ForbiddenException('This account has not been provisioned. Contact your administrator.');
+    this.userCache.set(sub, user);
     if (user.status === 'suspended') throw new ForbiddenException('This account is suspended');
     return user;
   }

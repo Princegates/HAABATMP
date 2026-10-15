@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ENV, Env } from '../config';
 import { Actor, AuthUser } from '../common/auth.types';
 import { AuditService } from '../common/audit.service';
+import { UserCache } from '../common/user-cache';
 import { Db, Q } from '../common/db.service';
 import { ActorCtx, CurrentUser, Require } from '../common/decorators';
 import { serviceHeaders } from '../common/supabase';
@@ -23,7 +24,7 @@ import { plural, removeEnrolments, removeProgramme } from '../common/cascade';
 
 @Controller()
 export class DeletionsController {
-  constructor(private readonly db: Db, private readonly audit: AuditService, @Inject(ENV) private readonly env: Env) {}
+  constructor(private readonly db: Db, private readonly audit: AuditService, private readonly userCache: UserCache, @Inject(ENV) private readonly env: Env) {}
 
   // ---------------------------------------------------------------- shared
 
@@ -86,6 +87,7 @@ export class DeletionsController {
 
   /** The sign-in is removed from Supabase too, after the database change is safely committed. */
   private async removeSignIn(authUserId: string | null) {
+    this.userCache.clear(); // called right after the deletion commits
     if (this.env.AUTH_MODE !== 'supabase' || !authUserId) return;
     try {
       await fetch(`${this.env.SUPABASE_URL}/auth/v1/admin/users/${authUserId}`, { method: 'DELETE', headers: serviceHeaders(this.env.SUPABASE_SERVICE_ROLE_KEY) });

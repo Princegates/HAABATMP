@@ -16,6 +16,7 @@ import { serviceHeaders } from '../common/supabase';
 import { NotifyService } from '../common/notify.service';
 import { SettingsService } from '../common/settings.service';
 import { Throttle } from '@nestjs/throttler';
+import { UserCache } from '../common/user-cache';
 import { CAN_CREATE_ROLES, ROLES, Role } from '../common/permissions';
 import { isStaff, requireOrgScope, seesAllClients } from '../common/scope';
 import { isoDate, pageQuery, parse, uuid } from '../common/validation';
@@ -77,6 +78,7 @@ export class UsersController {
     private readonly crypto: CryptoService,
     private readonly settings: SettingsService,
     private readonly notify: NotifyService,
+    private readonly userCache: UserCache,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -434,7 +436,7 @@ export class UsersController {
     if (!CLIENT_ROLES.includes(newRole) && d.organization_id) throw new BadRequestException('HAAB staff do not belong to a client organisation');
     if (newRole === 'org_admin' && (d.organization_id === null || (d.organization_id === undefined && !target.organization_id))) throw new BadRequestException('A client administrator needs an organisation');
     const staffNow = !CLIENT_ROLES.includes(newRole);
-    return this.db.tx(async (q) => {
+    const updated = await this.db.tx(async (q) => {
       const after = await q.one(
         `update users set full_name = coalesce($2, full_name), phone = case when $3 then $4 else phone end,
                 organization_id = case when $5 then $6 else organization_id end, role = coalesce($7, role),
@@ -444,6 +446,8 @@ export class UsersController {
       await this.audit.log(q, actor, 'user.update', 'user', id, pickUser(target), after);
       return after;
     });
+    this.userCache.clear();
+    return updated;
   }
 
   @Post('users/:id/suspend')
@@ -495,6 +499,7 @@ export class UsersController {
       }
     }
     await this.db.query('update users set mfa_enrolled = false where id = $1', [id]);
+    this.userCache.clear();
     await this.audit.log(null, actor, 'user.mfa_reset', 'user', id, null, { email: target.email });
     return { ok: true };
   }
@@ -511,11 +516,13 @@ export class UsersController {
   // ---------------------------------------------------------------- helpers
 
   private async setStatus(id: string, status: string, before: any, actor: Actor, action: string, reason?: string) {
-    return this.db.tx(async (q) => {
-      const after = await q.one('update users set status = $2 where id = $1 returning id, email, full_name, role, status', [id, status]);
+    const after = await this.db.tx(async (q) => {
+      const row = await q.one('update users set status = $2 where id = $1 returning id, email, full_name, role, status', [id, status]);
       await this.audit.log(q, actor, action, 'user', id, { status: before.status }, { status, reason });
-      return after;
+      return row;
     });
+    this.userCache.clear();
+    return after;
   }
 
   private async load(u: AuthUser, id: string) {
