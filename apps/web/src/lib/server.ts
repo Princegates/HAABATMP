@@ -42,8 +42,9 @@ export function clientHeaders(req: Request): Record<string, string> {
   if (!secret) return {};
   const xff = (req.headers.get('x-forwarded-for') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
   // cf-connecting-ip is only believable when every request really comes through Cloudflare. Otherwise a visitor can send
-  // any value and dodge the rate limits, so it is ignored unless TRUST_CLOUDFLARE=true is set on the host.
-  const cf = process.env.TRUST_CLOUDFLARE === 'true' ? req.headers.get('cf-connecting-ip') : null;
+  // any value and dodge the rate limits, so it is ignored unless TRUST_CLOUDFLARE=true is set on the host AND the origin
+  // lock (ORIGIN_LOCK_SECRET, see middleware.ts) is on, which is what guarantees nobody reaches the app except through Cloudflare.
+  const cf = process.env.TRUST_CLOUDFLARE === 'true' && process.env.ORIGIN_LOCK_SECRET ? req.headers.get('cf-connecting-ip') : null;
   const ip = cf ?? xff[xff.length - 1] ?? req.headers.get('x-real-ip');
   return ip ? { 'x-atmp-client-ip': ip, 'x-atmp-proxy-key': secret } : {};
 }

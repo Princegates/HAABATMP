@@ -43,7 +43,7 @@ services:
     branch: claude/charming-dijkstra-6bb7fq   # staging deploys from this branch for now; change to `staging` or `main` later
     buildCommand: npm ci --include=dev && npm run build -w apps/web
     startCommand: npm run start -w apps/web
-    healthCheckPath: /login
+    healthCheckPath: /healthz
     autoDeploy: true
     envVars:
       - { key: NODE_ENV, value: production }

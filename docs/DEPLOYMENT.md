@@ -48,8 +48,8 @@ Use a subdomain such as `training.yourdomain.com` so the main website and any ex
 In Render, add the custom domain to the web service and create the CNAME it shows at GoDaddy. HTTPS is automatic.
 Before changing anything, copy your current DNS records.
 
-Optional but recommended: put the domain's DNS on Cloudflare (free) for a firewall and rate limiting in front of the app,
-and Cloudflare Access if you want to restrict the platform to staff and known client networks. Set SSL mode to Full (strict).
+Optional but recommended: put the domain's DNS on Cloudflare (free) for a firewall and rate limiting in front of the app.
+Follow `docs/CLOUDFLARE.md`: it covers the origin lock (`ORIGIN_LOCK_SECRET`) and `TRUST_CLOUDFLARE`, which must be set together.
 
 ## 5. The first super administrator
 

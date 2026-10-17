@@ -41,7 +41,7 @@ services:
     branch: production
     buildCommand: npm ci --include=dev && npm run build -w apps/web
     startCommand: npm run start -w apps/web
-    healthCheckPath: /login
+    healthCheckPath: /healthz
     autoDeploy: true
     envVars:
       - { key: NODE_ENV, value: production }
