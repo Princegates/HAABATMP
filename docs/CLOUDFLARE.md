@@ -16,9 +16,35 @@ routes, and hides the app's real address. The steps below keep the site working 
 
 The API stays on its own public Render address for now (see "What this does not cover").
 
+## HAAB's setup (haabaviation.com)
+
+The live site is the **staging blueprint** (`render.staging.yaml`), deployed from `claude/charming-dijkstra-6bb7fq`. Wherever this guide says
+"the web service", it means **`haab-atmp-web-staging`**, and the app is served at `training.haabaviation.com`. Because there is no separate
+staging copy, the safe rehearsal is the order below: put Cloudflare in front with the lock **off**, check the site, then turn the lock on
+(step 7). The lock can be removed again in a minute.
+
+Records found in public DNS on 2026-10-17 (the GoDaddy table is the source of truth; compare it with what Cloudflare imports):
+
+| Name | Type | Value | In Cloudflare |
+|---|---|---|---|
+| `haabaviation.com` | A | `132.148.176.101` (GoDaddy hosting) | DNS only |
+| `www`, `mail`, `webmail`, `cpanel`, `autodiscover`, `autoconfig` | A / CNAME | the same GoDaddy hosting | DNS only |
+| `haabaviation.com` | MX | `0 mail.haabaviation.com` | DNS only |
+| `haabaviation.com` | TXT | `v=spf1 a mx ptr include:secureserver.net ~all` | copy exactly |
+| `_dmarc` | TXT | `v=DMARC1; p=reject; adkim=r; aspf=r; rua=mailto:dmarc_rua@onsecureserver.net;` | copy exactly |
+| `resend._domainkey` | TXT | the long `p=MIGf...` key | **copy every character** (DMARC is `p=reject`) |
+| `send` | CNAME | `send.forge.rmta.net` | DNS only |
+| `_autodiscover._tcp` | SRV | `0 0 443 cpanelemaildiscovery.cpanel.net` | copy exactly |
+| `_domainconnect` | CNAME | `_domainconnect.gd.domaincontrol.com` | optional (GoDaddy helper) |
+| `training` | CNAME | `haab-atmp-web-staging.onrender.com` | **Proxied** (the only orange cloud) |
+
+Nameservers today: `ns13.domaincontrol.com`, `ns14.domaincontrol.com`. There is no DNSSEC, so nothing to switch off at GoDaddy first.
+Mail and the main website live on GoDaddy hosting, so keep every one of those records, and leave the website records unproxied.
+The Cloudflare header rule's hostname is `training.haabaviation.com`.
+
 ## Before you start
 
-1. Deploy this release to staging first (`render.staging.yaml`) and rehearse the whole list there with a staging hostname.
+1. There is no separate staging copy (the live site runs from the staging blueprint), so follow the order in "HAAB's setup": Cloudflare first with the lock off, then the lock.
 2. In Render, open each web service's settings and set **Health Check Path** to `/healthz` (the blueprint now says so, but a
    service created earlier keeps its old value until you change it or sync the blueprint).
 3. Copy every DNS record from GoDaddy (screenshot the list). **Moving nameservers moves all of the domain's DNS**, including mail
