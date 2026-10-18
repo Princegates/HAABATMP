@@ -96,6 +96,18 @@ The Cloudflare header rule's hostname is `training.haabaviation.com`.
 - Sign in, then open Audit log: your entry shows **your own** address, not one starting 104., 172.64 to 172.71 or 188.114 (Cloudflare ranges).
 - Render shows the web service as healthy.
 
+## If the audit log shows Cloudflare addresses
+
+Work through these in order. After each change, sign out, sign in, and read the newest `auth.login` entry.
+
+1. Open `https://training.yourdomain.com/healthz?diag=1`. It answers only requests that came through your Cloudflare (they carry the lock
+   header) and returns yes/no facts, never addresses: the release running, whether the lock and `TRUST_CLOUDFLARE` are on, which
+   headers arrived, and which one the app used. You want `address_taken_from: x-haab-client-ip`. If the release is old, wait for the deploy. If
+   `x-haab-client-ip` is missing, the second header in the Cloudflare rule is missing or not deployed.
+2. If the app takes the address from `x-haab-client-ip` and the log still shows Cloudflare, **`PROXY_SHARED_SECRET` differs between the
+   web service and the API service**. The API then ignores the address the web app sends. Copy the API's value into the web service.
+3. A VPN, Cloudflare WARP or iCloud Private Relay really does make your own address a Cloudflare one. Check `cloudflare.com/cdn-cgi/trace`.
+
 ## Undo
 
 - Quickest: delete `ORIGIN_LOCK_SECRET` and `TRUST_CLOUDFLARE` in Render and let the service restart. The site is open again at once.
