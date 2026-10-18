@@ -37,9 +37,7 @@ export function sameOrigin(req: Request): boolean {
  * so the API can trust the address. Behind Cloudflare the real address is in cf-connecting-ip; otherwise the last
  * entry added by the hosting proxy is used (the leftmost can be forged by the visitor).
  */
-export function clientHeaders(req: Request): Record<string, string> {
-  const secret = process.env.PROXY_SHARED_SECRET;
-  if (!secret) return {};
+export function pickClientIp(req: Request): { ip: string | null; source: 'x-haab-client-ip' | 'cf-connecting-ip' | 'x-forwarded-for' | 'x-real-ip' | 'none' } {
   const xff = (req.headers.get('x-forwarded-for') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
   // Headers a visitor could forge are believed only while the origin lock (ORIGIN_LOCK_SECRET, see middleware.ts) is on and
   // TRUST_CLOUDFLARE=true: the lock guarantees every request came through our Cloudflare, which overwrites them.
@@ -48,7 +46,17 @@ export function clientHeaders(req: Request): Record<string, string> {
   //  - cf-connecting-ip: used when the rule above is not set up.
   const trusted = process.env.TRUST_CLOUDFLARE === 'true' && !!process.env.ORIGIN_LOCK_SECRET;
   const own = trusted ? req.headers.get('x-haab-client-ip') : null;
+  if (own) return { ip: own, source: 'x-haab-client-ip' };
   const cf = trusted ? req.headers.get('cf-connecting-ip') : null;
-  const ip = own || cf || xff[xff.length - 1] || req.headers.get('x-real-ip');
+  if (cf) return { ip: cf, source: 'cf-connecting-ip' };
+  if (xff.length) return { ip: xff[xff.length - 1], source: 'x-forwarded-for' };
+  const real = req.headers.get('x-real-ip');
+  return real ? { ip: real, source: 'x-real-ip' } : { ip: null, source: 'none' };
+}
+
+export function clientHeaders(req: Request): Record<string, string> {
+  const secret = process.env.PROXY_SHARED_SECRET;
+  if (!secret) return {};
+  const { ip } = pickClientIp(req);
   return ip ? { 'x-atmp-client-ip': ip, 'x-atmp-proxy-key': secret } : {};
 }
