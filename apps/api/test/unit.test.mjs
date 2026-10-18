@@ -6,6 +6,7 @@ import { certStatus } from '../dist/common/certificates.service.js';
 import { SignJWT } from 'jose';
 import { TokenService } from '../dist/common/token.service.js';
 import { LoginAttempts } from '../dist/common/login-attempts.js';
+import { renderSerially } from '../dist/common/pdf-queue.js';
 import { addMonths, csvEscape, daysBetween } from '../dist/common/util.js';
 
 const q = (type, answer, options = null, marks = 4) => ({ id: 'x', type, answer, options, marks });
@@ -167,4 +168,16 @@ test('sign-in attempts: five wrong passwords pause one person on one address, no
   b.succeeded('carol@example.com', '3.3.3.3');
   for (let i = 0; i < 4; i++) b.failed('carol@example.com', '3.3.3.3');
   assert.equal(b.retryAfter('carol@example.com', '3.3.3.3'), 0, 'a correct password resets her count');
+});
+
+test('pdf queue: renders run one at a time and other work gets a turn between them', async () => {
+  let running = 0, peak = 0, others = 0;
+  const work = () => async () => { running++; peak = Math.max(peak, running); const t = Date.now(); while (Date.now() - t < 5); running--; return others; };
+  const ticker = setInterval(() => others++, 1);
+  const seen = await Promise.all([1, 2, 3, 4].map(() => renderSerially(work())));
+  clearInterval(ticker);
+  assert.equal(peak, 1, 'never two at once');
+  assert.ok(seen[3] > seen[0], 'the rest of the server ran between the PDFs');
+  await assert.rejects(renderSerially(async () => { throw new Error('boom'); }), /boom/);
+  assert.equal(await renderSerially(async () => 'still works'), 'still works', 'a failed render does not block the next one');
 });

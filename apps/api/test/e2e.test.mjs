@@ -5,6 +5,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import { spawnSync } from 'node:child_process';
+import { existsSync, rmSync } from 'node:fs';
+import path from 'node:path';
 
 if (!process.env.DATABASE_URL) { console.log('DATABASE_URL not set: skipping e2e'); process.exit(0); }
 process.env.AUTH_MODE ??= 'dev';
@@ -21,10 +23,12 @@ let app, base, db;
 const S = {}; // shared state across the ordered steps below
 
 async function http(method, path, token, body, raw = false) {
-  const res = await fetch(base + path, {
+  const send = () => fetch(base + path, {
     method, headers: { ...(body && !(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
   });
+  // the server closes idle connections after a few seconds; a test that waited on a long job meets a dropped one, so try once more
+  const res = await send().catch((e) => (e instanceof TypeError && e.message === 'fetch failed' ? send() : Promise.reject(e)));
   if (raw) return res;
   const text = await res.text();
   let json; try { json = JSON.parse(text); } catch { json = text; }
@@ -1246,4 +1250,44 @@ test('38. a class can sign in from one address; repeated wrong passwords still p
     process.env.THROTTLE_DISABLED = 'true';
     process.env.PROXY_SHARED_SECRET = 'test-proxy-secret-0123456789abcdef';
   }
+});
+
+test('39. certificate PDFs are built once and served from storage; a change makes a fresh copy; the job prepares missing ones', async () => {
+  const sa = api(S.sa);
+  const cert = (await db.query(`select id, trainee_id from certificates where status = 'valid' order by created_at limit 1`)).rows[0];
+  assert.ok(cert, 'an earlier test issued a certificate');
+  const get = async () => Buffer.from(await (await sa.raw(`/certificates/${cert.id}/pdf`)).arrayBuffer());
+  const keyOf = async () => (await db.query('select pdf_key from certificates where id = $1', [cert.id])).rows[0].pdf_key;
+  const onDisk = (key) => existsSync(path.resolve(process.env.STORAGE_DIR ?? './storage', key));
+  await db.query('update certificates set pdf_key = null where id = $1', [cert.id]);
+  rmSync(path.resolve(process.env.STORAGE_DIR ?? './storage', 'certificates', cert.id), { recursive: true, force: true }); // copies left by an earlier run
+
+  const first = await get();
+  assert.equal(first.subarray(0, 5).toString(), '%PDF-');
+  const key1 = await keyOf();
+  assert.match(key1, /^certificates\/[0-9a-f-]{36}\/[0-9a-f]{32}\.pdf$/, 'the key carries a hash of what is printed');
+  assert.ok(onDisk(key1), 'the copy is stored');
+  assert.ok(first.equals(await get()), 'the second download is the stored copy (a rebuilt PDF would differ in its creation time)');
+
+  await db.query('update users set full_name = full_name || $2 where id = $1', [cert.trainee_id, ' Jr']);
+  const renamed = await get(), key2 = await keyOf();
+  assert.notEqual(key2, key1, 'a changed name makes a new key, so nobody is handed an old copy');
+  assert.ok(!renamed.equals(first), 'and a new PDF');
+  await db.query('update users set full_name = replace(full_name, $2, $3) where id = $1', [cert.trainee_id, ' Jr', '']);
+
+  rmSync(path.resolve(process.env.STORAGE_DIR ?? './storage', await keyOf()));
+  assert.equal((await get()).subarray(0, 5).toString(), '%PDF-', 'a missing stored copy is rebuilt, not an error');
+
+  await db.query('update certificates set pdf_key = null where id = $1', [cert.id]);
+  const burst = await Promise.all(Array.from({ length: 6 }, get));
+  assert.ok(burst.every((b) => b.equals(burst[0])), 'six simultaneous requests share one build');
+
+  await db.query(`update certificates set pdf_key = null where status = 'valid'`);
+  const before = (await db.query(`select count(*)::int n from certificates where status = 'valid' and pdf_key is null`)).rows[0].n;
+  const jobs = spawnSync('node', ['dist/scripts/jobs.js'], { env: process.env, encoding: 'utf8' });
+  assert.equal(jobs.status, 0, jobs.stderr);
+  const report = JSON.parse(jobs.stdout.trim().split('\n').pop());
+  assert.ok(report.certificate_pdfs_prepared >= 1, 'the job prepared certificates');
+  const after = (await db.query(`select count(*)::int n from certificates where status = 'valid' and pdf_key is null`)).rows[0].n;
+  assert.equal(after, Math.max(0, before - 40), 'each run prepares up to 40, so a backlog clears over a few runs and a normal day in one');
 });

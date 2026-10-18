@@ -2,7 +2,10 @@ import { ConflictException, Inject, Injectable, NotFoundException } from '@nestj
 import { ENV, Env } from '../config';
 import { Actor } from './auth.types';
 import { AuditService } from './audit.service';
+import { createHash } from 'node:crypto';
 import { renderCertificate } from './certificate-pdf';
+import { renderSerially } from './pdf-queue';
+import { StorageService } from './storage.service';
 import { CryptoService } from './crypto.service';
 import { Db, Q } from './db.service';
 import { NotifyService } from './notify.service';
@@ -27,6 +30,7 @@ export class CertificatesService {
   constructor(
     private readonly db: Db, private readonly audit: AuditService, private readonly numbers: NumberingService,
     private readonly crypto: CryptoService, private readonly settings: SettingsService, private readonly notify: NotifyService,
+    private readonly storage: StorageService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -68,6 +72,12 @@ export class CertificatesService {
     return after;
   }
 
+  private readonly inflight = new Map<string, Promise<Buffer>>();
+
+  /**
+   * The certificate as a PDF. The stored copy is kept under a key that contains a hash of everything printed on it, so a changed name,
+   * title or template makes a new key and is never served from an old copy. Nothing is ever served stale, and older copies are simply unused.
+   */
   async pdf(certificateId: string): Promise<{ file: Buffer; number: string }> {
     const c = await this.db.one<any>(
       `select c.*, t.full_name, co.title as course_title, co.code as course_code, co.duration_hours, p.start_date, p.end_date,
@@ -81,7 +91,7 @@ export class CertificatesService {
     const mods = await this.db.query<{ title: string }>(`select title from course_modules where course_id = $1 order by position, created_at`, [c.course_id]);
     const org = await this.settings.get<{ name?: string }>('organization');
     const dates = c.start_date === c.end_date ? fmt(c.start_date) : `${fmt(c.start_date)} to ${fmt(c.end_date)}`;
-    const file = await renderCertificate({
+    const view = {
       heading: c.heading ?? 'Certificate of Completion', holder: c.full_name, courseTitle: c.course_title, courseCode: c.course_code,
       trainingDates: dates, trainingHours: c.duration_hours, number: c.number, issuedAt: fmt(c.issued_at), expiresAt: c.expires_at ? fmt(c.expires_at) : null,
       signatoryName: c.signatory_name, signatoryTitle: c.signatory_title, footerText: c.footer_text, accent: c.accent_color ?? '#b8966e',
@@ -89,8 +99,35 @@ export class CertificatesService {
       category: c.category_name, programmeCode: c.programme_code, location: c.location, partner: c.partner_name,
       modules: mods.slice(0, 8).map((m) => m.title), moreModules: Math.max(0, mods.length - 8),
       passMark: c.pass_mark, minAttendance: c.min_attendance_pct,
-    });
-    return { file, number: c.number };
+    };
+    const key = `certificates/${c.id}/${createHash('sha256').update(JSON.stringify(view)).digest('hex').slice(0, 32)}.pdf`;
+    if (c.pdf_key === key) {
+      try { return { file: await this.storage.get(key), number: c.number }; } catch { /* the stored copy is gone: make it again */ }
+    }
+    let pending = this.inflight.get(key);
+    if (!pending) {
+      // several people asking for the same certificate at once share one build
+      pending = renderSerially(async () => {
+        const file = await renderCertificate(view);
+        try {
+          await this.storage.put(key, file, 'application/pdf');
+        } catch { /* already stored by another request or instance: the content is identical */ }
+        await this.db.query('update certificates set pdf_key = $2 where id = $1', [c.id, key]);
+        return file;
+      }).finally(() => this.inflight.delete(key));
+      this.inflight.set(key, pending);
+    }
+    return { file: await pending, number: c.number };
+  }
+
+  /** Builds and stores the PDFs that do not have one yet. Run by the background job, so the work happens away from the web server. */
+  async warmPdfs(limit = 40): Promise<number> {
+    const todo = await this.db.query<{ id: string }>(`select id from certificates where pdf_key is null and status = 'valid' order by created_at limit $1`, [limit]);
+    let done = 0;
+    for (const c of todo) {
+      try { await this.pdf(c.id); done++; } catch { /* leave it for the next run; a download builds it on demand */ }
+    }
+    return done;
   }
 }
 

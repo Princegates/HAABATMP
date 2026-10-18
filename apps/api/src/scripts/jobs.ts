@@ -6,6 +6,7 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../app.module';
 import { AuditService } from '../common/audit.service';
+import { CertificatesService } from '../common/certificates.service';
 import { Db } from '../common/db.service';
 import { NotifyService } from '../common/notify.service';
 import { SettingsService } from '../common/settings.service';
@@ -74,7 +75,10 @@ async function main() {
   }
   report.session_reminders = sessionReminders;
 
-  // 5. send queued email last so everything created above goes out in this run
+  // 5. build certificate PDFs ahead of time, here rather than on the web server, so a download is a file read
+  report.certificate_pdfs_prepared = await app.get(CertificatesService).warmPdfs(40);
+
+  // 6. send queued email last so everything created above goes out in this run
   const mail = await notify.processOutbox(100);
   report.emails_sent = mail.sent;
   report.emails_failed = mail.failed;

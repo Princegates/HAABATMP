@@ -348,8 +348,11 @@ export class AssessmentsController {
     parse(uuid, id);
     if (u.role !== 'trainee') throw new ForbiddenException('Only trainees sit assessments');
     return this.db.tx(async (q) => {
-      const a = await q.one<any>(`select * from assessments where id = $1 and status = 'published' for update`, [id]);
+      // Many trainees start the same exam at the same moment, so the assessment row is only share-locked (staff changes still wait
+      // for them). What must not happen twice is one trainee starting twice (a double click), so that is serialised per trainee.
+      const a = await q.one<any>(`select * from assessments where id = $1 and status = 'published' for share`, [id]);
       if (!a) throw new NotFoundException();
+      await q.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [`attempt:${id}:${u.id}`]);
       if (!(await q.one(`select 1 from enrollments where programme_id = $1 and trainee_id = $2 and status = 'confirmed'`, [a.programme_id, u.id]))) throw new ForbiddenException('You are not confirmed on this programme');
       const now = Date.now();
       if (a.opens_at && now < new Date(a.opens_at).getTime()) throw new ConflictException('This assessment has not opened yet');
@@ -361,8 +364,10 @@ export class AssessmentsController {
         attempt = null;
       }
       let resumed = true;
+      let started = false;
       if (!attempt) {
         resumed = false;
+        started = true;
         const used = await q.one<{ n: number }>('select count(*) n from exam_attempts where assessment_id = $1 and trainee_id = $2', [id, u.id]);
         if (used!.n >= a.max_attempts) throw new ConflictException('You have used all your attempts');
         const qs = await q.query<{ question_id: string }>('select question_id from assessment_questions where assessment_id = $1 order by position', [id]);
@@ -372,9 +377,11 @@ export class AssessmentsController {
         attempt = await q.one<any>(
           `insert into exam_attempts (assessment_id, trainee_id, attempt_no, deadline_at, question_order) values ($1,$2,$3,$4,$5) returning *`,
           [id, u.id, used!.n + 1, new Date(deadline).toISOString(), JSON.stringify(order)]);
-        await this.audit.log(q, actor, 'attempt.start', 'exam_attempt', attempt.id, null, { assessment_id: id, attempt_no: attempt.attempt_no });
       }
-      return { resumed, ...(await this.attemptPayload(q, attempt)) };
+      const payload = await this.attemptPayload(q, attempt);
+      // last, so the audit chain's lock is held only until the commit
+      if (started) await this.audit.log(q, actor, 'attempt.start', 'exam_attempt', attempt.id, null, { assessment_id: id, attempt_no: attempt.attempt_no });
+      return { resumed, ...payload };
     });
   }
 
@@ -413,16 +420,16 @@ export class AssessmentsController {
         return { timeUp: true as const }; // returned, not thrown: throwing here would roll the submission back
       }
       const allowed = new Set<string>(a.question_order);
-      let saved = 0;
-      for (const [qid, response] of Object.entries(answers)) {
-        if (!allowed.has(qid)) continue;
+      const rows = Object.entries(answers).filter(([qid]) => allowed.has(qid));
+      // one statement for all the answers, not one per answer: a hosted database makes every round trip count
+      if (rows.length) {
         await q.query(
-          `insert into attempt_answers (attempt_id, question_id, response) values ($1,$2,$3)
+          `insert into attempt_answers (attempt_id, question_id, response)
+           select $1, x.qid, x.response::jsonb from unnest($2::uuid[], $3::text[]) as x(qid, response)
            on conflict (attempt_id, question_id) do update set response = excluded.response, saved_at = now()`,
-          [id, qid, JSON.stringify(response ?? null)]);
-        saved++;
+          [id, rows.map(([qid]) => qid), rows.map(([, response]) => JSON.stringify(response ?? null))]);
       }
-      return { timeUp: false as const, saved, deadline_at: a.deadline_at };
+      return { timeUp: false as const, saved: rows.length, deadline_at: a.deadline_at };
     });
     if (outcome.timeUp) throw new ConflictException({ statusCode: 409, message: 'Time is up. Your saved answers have been submitted.', code: 'TIME_UP' });
     return { saved: outcome.saved, server_time: new Date().toISOString(), deadline_at: outcome.deadline_at };
@@ -598,15 +605,20 @@ export class AssessmentsController {
       [a.assessment_id, a.question_order]);
     const saved = new Map((await q.query<any>('select question_id, response from attempt_answers where attempt_id = $1', [attemptId])).map((s) => [s.question_id, s.response]));
     let needsManual = false;
-    for (const qu of qs) {
+    const marked = qs.map((qu) => {
       const g = grade(qu as QuestionRow, saved.get(qu.id));
       const unanswered = !saved.has(qu.id);
       const manual = g.needsManual && !unanswered; // an unanswered essay needs no marker: it is zero
       if (manual) needsManual = true;
+      return { id: qu.id as string, marks: manual ? null : g.marks, manual };
+    });
+    // one statement for the whole paper, not one per question
+    if (marked.length) {
       await q.query(
-        `insert into attempt_answers (attempt_id, question_id, awarded_marks, needs_manual) values ($1,$2,$3,$4)
+        `insert into attempt_answers (attempt_id, question_id, awarded_marks, needs_manual)
+         select $1, x.qid, x.marks, x.manual from unnest($2::uuid[], $3::numeric[], $4::boolean[]) as x(qid, marks, manual)
          on conflict (attempt_id, question_id) do update set awarded_marks = excluded.awarded_marks, needs_manual = excluded.needs_manual`,
-        [attemptId, qu.id, manual ? null : g.marks, manual]);
+        [attemptId, marked.map((m) => m.id), marked.map((m) => m.marks), marked.map((m) => m.manual)]);
     }
     const t = await this.totals(q, attemptId);
     const asm = await q.one<any>('select release_mode from assessments where id = $1', [a.assessment_id]);

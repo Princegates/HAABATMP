@@ -6,6 +6,7 @@ import { AuditService } from '../common/audit.service';
 import { Db, Q } from '../common/db.service';
 import { ActorCtx, CurrentUser, Require } from '../common/decorators';
 import { renderInvoice, renderReceipt } from '../common/finance-pdf';
+import { renderSerially } from '../common/pdf-queue';
 import { InvoicingService } from '../common/invoicing.service';
 import { NumberingService } from '../common/numbering.service';
 import { seesAllClients } from '../common/scope';
@@ -165,12 +166,12 @@ export class FinanceController {
       this.settings.get<{ methods: { label: string; enabled: boolean; instructions: string }[] }>('payment_methods'),
       this.header(),
     ]);
-    const file = await renderInvoice({
+    const file = await renderSerially(() => renderInvoice({
       header, number: inv.number, status: inv.status, issueDate: inv.issue_date, dueDate: inv.due_date, billTo: billTo?.name ?? '',
       billToDetail: [billTo?.billing_address ?? billTo?.address, billTo?.billing_email].filter(Boolean).join('\n'), purchaseOrder: inv.purchase_order,
       currency: inv.currency, items, subtotal: inv.subtotal, taxRate: inv.tax_rate, tax: inv.tax_amount, total: inv.total, paid: inv.amount_paid,
       instructions: pm.methods.filter((m) => m.enabled && m.instructions).map((m) => `${m.label}: ${m.instructions}`), notes: inv.notes,
-    });
+    }));
     res.set('Content-Disposition', `attachment; filename="${inv.number}.pdf"`);
     return new StreamableFile(file);
   }
@@ -185,10 +186,11 @@ export class FinanceController {
     if (!p) throw new NotFoundException();
     const inv = await this.visible(u, p.invoice_id);
     const payer = inv.organization_id ? (await this.db.one<any>('select name from organizations where id = $1', [inv.organization_id]))?.name : (await this.db.one<any>('select full_name as name from users where id = $1', [inv.trainee_id]))?.name;
-    const file = await renderReceipt({
-      header: await this.header(), receiptNumber: p.receipt_number, invoiceNumber: inv.number, receivedAt: p.received_at, payer: payer ?? '', method: p.method, reference: p.reference,
+    const header = await this.header();
+    const file = await renderSerially(() => renderReceipt({
+      header, receiptNumber: p.receipt_number, invoiceNumber: inv.number, receivedAt: p.received_at, payer: payer ?? '', method: p.method, reference: p.reference,
       currency: inv.currency, amount: p.amount, invoiceTotal: inv.total, balance: inv.total - inv.amount_paid, status: p.status,
-    });
+    }));
     res.set('Content-Disposition', `attachment; filename="${p.receipt_number}.pdf"`);
     return new StreamableFile(file);
   }
