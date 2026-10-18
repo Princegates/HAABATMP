@@ -7,7 +7,7 @@ routes, and hides the app's real address. The steps below keep the site working 
 
 - `ORIGIN_LOCK_SECRET` on the web service: when set, the web app serves only requests carrying the header `x-origin-lock` with that
   value. Cloudflare adds the header, so anyone who goes round Cloudflare to the `onrender.com` address gets a 403.
-- `TRUST_CLOUDFLARE=true`: the app then reads the visitor's real address from Cloudflare's `cf-connecting-ip` header. It is
+- `TRUST_CLOUDFLARE=true`: the app then reads the visitor's real address from the `x-haab-client-ip` header set by your Cloudflare rule (or, failing that, `cf-connecting-ip`). It is
   honoured **only while the lock is on**, because without the lock anyone could send a made-up address and dodge the rate limits.
 - `/healthz` is exempt from the lock and returns only `ok`, for Render's health check.
 
@@ -61,9 +61,14 @@ The Cloudflare header rule's hostname is `training.haabaviation.com`.
    **Proxied** (orange cloud). Leave every mail record as **DNS only**. Do not add a record for the API.
 4. **SSL/TLS:** set the mode to **Full (strict)**; turn on **Always Use HTTPS**; minimum TLS version 1.2.
    If Render cannot renew the certificate while proxied, set the record to DNS only for a few minutes, let Render verify, then proxy it again.
-5. **Add the lock header:** Rules > Transform Rules > Modify Request Header > Create rule.
+5. **Add the lock header and the visitor's address:** Rules > Transform Rules > Modify Request Header > Create rule.
    - When: Hostname equals `training.yourdomain.com`
-   - Then: **Set static** header `x-origin-lock` = your secret.
+   - Then, header 1: **Set static** `x-origin-lock` = your secret.
+   - Then, header 2 (**Add** another header): **Set dynamic** `x-haab-client-ip` = `ip.src`.
+
+   The second header carries the visitor's real address. It is needed because Render sits behind Cloudflare too, and Render's layer can
+   replace `cf-connecting-ip` with the address of your own Cloudflare. If the audit log shows Cloudflare addresses (104., 172.64 to 172.71,
+   188.114.) after step 7, this header is the fix. It must be **Set** (not Add) so a visitor cannot send their own.
 6. **Protect the sign-in routes and tidy the settings:**
    - Security > WAF: turn the free managed ruleset on. Security > Bots: turn **Bot Fight Mode** on.
    - Rate-limiting rule (the free plan allows one): when URI Path equals `/api/session` and Method is POST, more than 30 requests in 10 seconds

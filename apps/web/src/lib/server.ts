@@ -41,10 +41,14 @@ export function clientHeaders(req: Request): Record<string, string> {
   const secret = process.env.PROXY_SHARED_SECRET;
   if (!secret) return {};
   const xff = (req.headers.get('x-forwarded-for') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
-  // cf-connecting-ip is only believable when every request really comes through Cloudflare. Otherwise a visitor can send
-  // any value and dodge the rate limits, so it is ignored unless TRUST_CLOUDFLARE=true is set on the host AND the origin
-  // lock (ORIGIN_LOCK_SECRET, see middleware.ts) is on, which is what guarantees nobody reaches the app except through Cloudflare.
-  const cf = process.env.TRUST_CLOUDFLARE === 'true' && process.env.ORIGIN_LOCK_SECRET ? req.headers.get('cf-connecting-ip') : null;
-  const ip = cf ?? xff[xff.length - 1] ?? req.headers.get('x-real-ip');
+  // Headers a visitor could forge are believed only while the origin lock (ORIGIN_LOCK_SECRET, see middleware.ts) is on and
+  // TRUST_CLOUDFLARE=true: the lock guarantees every request came through our Cloudflare, which overwrites them.
+  //  - x-haab-client-ip: set by our Cloudflare rule to ip.src. Preferred, because Render sits behind Cloudflare too, and its
+  //    own Cloudflare layer can replace cf-connecting-ip with the address of ours.
+  //  - cf-connecting-ip: used when the rule above is not set up.
+  const trusted = process.env.TRUST_CLOUDFLARE === 'true' && !!process.env.ORIGIN_LOCK_SECRET;
+  const own = trusted ? req.headers.get('x-haab-client-ip') : null;
+  const cf = trusted ? req.headers.get('cf-connecting-ip') : null;
+  const ip = own || cf || xff[xff.length - 1] || req.headers.get('x-real-ip');
   return ip ? { 'x-atmp-client-ip': ip, 'x-atmp-proxy-key': secret } : {};
 }
