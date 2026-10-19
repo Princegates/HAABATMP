@@ -480,6 +480,45 @@ export class UsersController {
     return { ok: true, note: this.env.AUTH_MODE === 'supabase' ? undefined : 'Development mode: nothing was sent.' };
   }
 
+  /**
+   * Sends a new invitation to someone who has never signed in (the first link expires or gets used up by a mail scanner).
+   * If the identity provider says they already accepted it (they chose a password but never signed in), a reset link is sent instead.
+   */
+  @Post('users/:id/resend-invite')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Require('users:write')
+  async resendInvite(@CurrentUser() u: AuthUser, @Param('id') id: string, @ActorCtx() actor: Actor) {
+    parse(uuid, id);
+    const target = await this.load(u, id);
+    this.assertManageable(u, target);
+    if (target.status === 'suspended') throw new BadRequestException('This account is suspended');
+    if (target.status !== 'invited') throw new ConflictException('This person has already signed in. Use Reset password if they need a new link.');
+    let how: 'invitation' | 'password link' = 'invitation';
+    if (this.env.AUTH_MODE === 'supabase') {
+      const redirect = encodeURIComponent(`${this.env.PUBLIC_WEB_URL}/set-password`);
+      const invite = await fetch(`${this.env.SUPABASE_URL}/auth/v1/invite?redirect_to=${redirect}`, {
+        method: 'POST', headers: { ...serviceHeaders(this.env.SUPABASE_SERVICE_ROLE_KEY), 'Content-Type': 'application/json' }, body: JSON.stringify({ email: target.email }),
+      });
+      if (invite.ok) {
+        // if the sign-in had been removed at the provider, a new one was just made: keep this person's record pointing at it
+        const authId = ((await invite.json().catch(() => ({}))) as any).id as string | undefined;
+        const row = await this.db.one<{ auth_user_id: string | null }>('select auth_user_id from users where id = $1', [id]);
+        if (authId && row && row.auth_user_id !== authId) {
+          await this.db.query('update users set auth_user_id = $2 where id = $1', [id, authId]);
+          this.userCache.clear();
+        }
+      } else {
+        const reset = await fetch(`${this.env.SUPABASE_URL}/auth/v1/recover?redirect_to=${redirect}`, {
+          method: 'POST', headers: { apikey: this.env.SUPABASE_ANON_KEY!, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: target.email }),
+        });
+        if (!reset.ok) throw new BadRequestException('The email could not be sent. Please try again in a minute.');
+        how = 'password link';
+      }
+    }
+    await this.audit.log(null, actor, 'user.invitation_resent', 'user', id, null, { email: target.email, sent: how });
+    return { ok: true, sent: how, note: this.env.AUTH_MODE === 'supabase' ? undefined : 'Development mode: nothing was sent.' };
+  }
+
   /** For a lost phone: removes the person's authenticator so they can sign in with a password and set it up again. */
   @Post('users/:id/reset-mfa')
   @Require('users:write')

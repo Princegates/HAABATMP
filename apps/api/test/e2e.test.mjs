@@ -1291,3 +1291,25 @@ test('39. certificate PDFs are built once and served from storage; a change make
   const after = (await db.query(`select count(*)::int n from certificates where status = 'valid' and pdf_key is null`)).rows[0].n;
   assert.equal(after, Math.max(0, before - 40), 'each run prepares up to 40, so a backlog clears over a few runs and a normal day in one');
 });
+
+test('40. resend invitation: only for people who have not signed in, only within your reach, and it is audited', async () => {
+  const sa = api(S.sa), a1 = api(S.tok_a1);
+  const mk = async (tag, role, extra = {}) => ok(await sa.post('/users', { email: email(tag), full_name: `${tag} ${run}`, role, ...extra }), `create ${tag}`);
+  const pending = await mk('resend1', 'trainee', { organization_id: S.orgA });
+  assert.equal(pending.status, 'invited');
+
+  const sent = ok(await a1.post(`/users/${pending.id}/resend-invite`), 'a training admin resends an invitation');
+  assert.equal(sent.ok, true); assert.equal(sent.sent, 'invitation');
+  assert.ok((await db.query(`select 1 from audit_logs where action = 'user.invitation_resent' and entity_id = $1`, [pending.id])).rows.length >= 1, 'it is audited');
+
+  refused(await api(S.tok_T1).post(`/users/${pending.id}/resend-invite`), 403, 'a trainee cannot');
+  refused(await api(S.tok_instr).post(`/users/${pending.id}/resend-invite`), 403, 'nor an instructor');
+  refused(await api(S.tok_bb).post(`/users/${pending.id}/resend-invite`), 404, 'a client administrator cannot reach another client\'s people');
+  ok(await api(S.tok_aa).post(`/users/${pending.id}/resend-invite`), 'a client administrator can for their own');
+  refused(await a1.post(`/users/${S.fin}/resend-invite`), 403, 'a training admin cannot manage finance staff');
+  refused(await a1.post(`/users/${S.t1}/resend-invite`), 409, 'someone who has already signed in is pointed to Reset password');
+
+  await db.query(`update users set status = 'suspended' where id = $1`, [pending.id]);
+  refused(await a1.post(`/users/${pending.id}/resend-invite`), 400, 'a suspended account gets nothing');
+  refused(await a1.post('/users/00000000-0000-4000-8000-000000000000/resend-invite'), 404, 'unknown person');
+});
