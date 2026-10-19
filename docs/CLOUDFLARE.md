@@ -87,7 +87,13 @@ The Cloudflare header rule's hostname is `training.haabaviation.com`.
    | `ORIGIN_LOCK_SECRET` | the secret from step 4 |
    | `TRUST_CLOUDFLARE` | `true` |
 
-   Both go in together. The API service needs no change.
+   Both go in together.
+
+   **Then point every link at the public address.** The API builds the links in invitation and reset emails, the QR code on certificates
+   and the "Sign in" link in notices from `PUBLIC_WEB_URL`. If that still holds the `onrender.com` address, all of them hit the origin lock
+   and show "Forbidden". On the **API service and the jobs service** set `PUBLIC_WEB_URL` and `WEB_ORIGIN` to `https://training.yourdomain.com`
+   (no trailing slash). In Supabase (Authentication > URL Configuration) set the **Site URL** to the same address and add
+   `https://training.yourdomain.com/**` to the **Redirect URLs**. Invitations and resets sent before the change must be sent again.
 
 ## Check it worked
 
